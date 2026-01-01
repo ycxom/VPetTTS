@@ -1,10 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
-using System.Windows.Media;
 using LinePutScript.Converter;
 using LinePutScript.Localization.WPF;
+using Panuon.WPF.UI;
 
 namespace VPet.Plugin.VPetTTS
 {
@@ -14,20 +15,12 @@ namespace VPet.Plugin.VPetTTS
     public partial class winSetting : Window
     {
         VPetTTS vts;
-        private Setting originalSettings;
-        
-        // 样式颜色
-        private static readonly SolidColorBrush SubTextColor = new SolidColorBrush(Color.FromRgb(0x66, 0x66, 0x66));
-        private static readonly SolidColorBrush BorderColor = new SolidColorBrush(Color.FromRgb(0xE0, 0xE0, 0xE0));
 
         public winSetting(VPetTTS vts)
         {
             InitializeComponent();
-
+            Resources = Application.Current.Resources;
             this.vts = vts;
-            
-            // 备份原始设置
-            originalSettings = LPSConvert.DeserializeObject<Setting>(LPSConvert.SerializeObject(vts.Set, "VPetTTS"));
             
             LoadSettings();
             SetupEventHandlers();
@@ -44,12 +37,14 @@ namespace VPet.Plugin.VPetTTS
             // 提供商选择
             foreach (ComboBoxItem item in CombProvider.Items)
             {
-                if (item.Tag.ToString() == vts.Set.Provider)
+                if (item.Tag?.ToString() == vts.Set.Provider)
                 {
                     CombProvider.SelectedItem = item;
                     break;
                 }
             }
+            if (CombProvider.SelectedItem == null && CombProvider.Items.Count > 0)
+                CombProvider.SelectedIndex = 0;
 
             // 代理设置
             EnableProxy.IsChecked = vts.Set.Proxy.IsEnabled;
@@ -58,21 +53,28 @@ namespace VPet.Plugin.VPetTTS
             
             foreach (ComboBoxItem item in ProxyProtocol.Items)
             {
-                if (item.Tag.ToString() == vts.Set.Proxy.Protocol)
+                if (item.Tag?.ToString() == vts.Set.Proxy.Protocol)
                 {
                     ProxyProtocol.SelectedItem = item;
                     break;
                 }
             }
+            if (ProxyProtocol.SelectedItem == null && ProxyProtocol.Items.Count > 0)
+                ProxyProtocol.SelectedIndex = 0;
 
             UpdateProviderConfig();
+            UpdateSpeedText();
         }
 
         private void SetupEventHandlers()
         {
-            VolumeSilder.ValueChanged += (s, e) => VolumeText.Text = $"{e.NewValue:F0}%";
-            SpeedSilder.ValueChanged += (s, e) => SpeedText.Text = $"{e.NewValue:F1}x";
+            SpeedSilder.ValueChanged += (s, e) => UpdateSpeedText();
             CombProvider.SelectionChanged += (s, e) => UpdateProviderConfig();
+        }
+
+        private void UpdateSpeedText()
+        {
+            SpeedText.Text = $"{SpeedSilder.Value:F1}x";
         }
 
         private void UpdateProviderConfig()
@@ -81,7 +83,7 @@ namespace VPet.Plugin.VPetTTS
 
             if (CombProvider.SelectedItem is ComboBoxItem selectedItem)
             {
-                var provider = selectedItem.Tag.ToString();
+                var provider = selectedItem.Tag?.ToString();
                 
                 switch (provider)
                 {
@@ -108,93 +110,61 @@ namespace VPet.Plugin.VPetTTS
         {
             var infoText = new TextBlock 
             { 
-                Text = "🆓 " + "Free TTS 使用免费在线服务，无需配置".Translate(),
-                Foreground = SubTextColor,
-                FontSize = 13,
+                Text = "Free TTS 使用免费在线服务，无需配置".Translate(),
                 TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 12)
+                Margin = new Thickness(0, 0, 0, 8)
             };
             ProviderConfigPanel.Children.Add(infoText);
 
-            var langLabel = new TextBlock 
-            { 
-                Text = "🌍 " + "语言设置".Translate(), 
-                Foreground = SubTextColor,
-                FontSize = 13,
-                Margin = new Thickness(0, 0, 0, 6) 
-            };
-            ProviderConfigPanel.Children.Add(langLabel);
-            
+            AddConfigLabel("语言设置".Translate());
             var langCombo = new ComboBox 
             { 
                 Name = "Free_TextLanguage", 
-                Margin = new Thickness(0, 0, 0, 12),
-                Padding = new Thickness(10, 8, 10, 8),
-                FontSize = 13,
-                MinHeight = 36,
-                VerticalContentAlignment = VerticalAlignment.Center
+                Margin = new Thickness(0, 0, 0, 8)
             };
+            langCombo.SetResourceReference(StyleProperty, "StandardComboBoxStyle");
             
             foreach (var lang in FreeTTSSetting.SupportedLanguages)
             {
                 var item = new ComboBoxItem { Content = lang.Value.Translate(), Tag = lang.Key };
                 langCombo.Items.Add(item);
                 if (lang.Key == vts.Set.Free.TextLanguage)
-                {
                     langCombo.SelectedItem = item;
-                }
             }
-            
             if (langCombo.SelectedItem == null && langCombo.Items.Count > 0)
-            {
                 langCombo.SelectedIndex = 0;
-            }
             
             ProviderConfigPanel.Children.Add(langCombo);
-
-            var hint = new TextBlock 
-            { 
-                Text = "💡 auto: 自动检测 | zh: 中文 | en: 英语 | ja: 日语 | yue: 粤语 | ko: 韩语".Translate(),
-                Foreground = new SolidColorBrush(Color.FromRgb(0x99, 0x99, 0x99)),
-                FontSize = 11,
-                TextWrapping = TextWrapping.Wrap,
-                Margin = new Thickness(0, 0, 0, 0)
-            };
-            ProviderConfigPanel.Children.Add(hint);
         }
 
         private void AddOpenAIConfig()
         {
-            AddConfigLabel("🔑 API Key");
-            var apiKeyBox = CreateTextBox("OpenAI_ApiKey", vts.Set.OpenAI.ApiKey);
-            ProviderConfigPanel.Children.Add(apiKeyBox);
+            AddConfigLabel("API Key");
+            AddTextBox("OpenAI_ApiKey", vts.Set.OpenAI.ApiKey);
 
-            AddConfigLabel("🌐 Base URL");
-            var baseUrlBox = CreateTextBox("OpenAI_BaseUrl", vts.Set.OpenAI.BaseUrl);
-            ProviderConfigPanel.Children.Add(baseUrlBox);
+            AddConfigLabel("Base URL");
+            AddTextBox("OpenAI_BaseUrl", vts.Set.OpenAI.BaseUrl);
 
-            AddConfigLabel("🤖 Model");
-            var modelBox = CreateTextBox("OpenAI_Model", vts.Set.OpenAI.Model);
-            ProviderConfigPanel.Children.Add(modelBox);
+            AddConfigLabel("Model");
+            AddTextBox("OpenAI_Model", vts.Set.OpenAI.Model);
 
-            AddConfigLabel("🎙️ Voice");
-            var voiceBox = CreateTextBox("OpenAI_Voice", vts.Set.OpenAI.Voice);
-            ProviderConfigPanel.Children.Add(voiceBox);
+            AddConfigLabel("Voice");
+            AddTextBox("OpenAI_Voice", vts.Set.OpenAI.Voice);
         }
 
         private void AddGPTSoVITSConfig()
         {
-            AddConfigLabel("🌐 Base URL");
-            var baseUrlBox = CreateTextBox("GPTSoVITS_BaseUrl", vts.Set.GPTSoVITS.BaseUrl);
-            ProviderConfigPanel.Children.Add(baseUrlBox);
+            AddConfigLabel("Base URL");
+            AddTextBox("GPTSoVITS_BaseUrl", vts.Set.GPTSoVITS.BaseUrl);
 
-            AddConfigLabel("⚙️ API 模式");
-            var apiModeCombo = CreateComboBox("GPTSoVITS_ApiMode");
+            AddConfigLabel("API 模式".Translate());
+            var apiModeCombo = new ComboBox { Name = "GPTSoVITS_ApiMode", Margin = new Thickness(0, 0, 0, 8) };
+            apiModeCombo.SetResourceReference(StyleProperty, "StandardComboBoxStyle");
             apiModeCombo.Items.Add(new ComboBoxItem { Content = "WebUI", Tag = "WebUI" });
             apiModeCombo.Items.Add(new ComboBoxItem { Content = "API v2", Tag = "ApiV2" });
             foreach (ComboBoxItem item in apiModeCombo.Items)
             {
-                if (item.Tag.ToString() == vts.Set.GPTSoVITS.ApiMode)
+                if (item.Tag?.ToString() == vts.Set.GPTSoVITS.ApiMode)
                 {
                     apiModeCombo.SelectedItem = item;
                     break;
@@ -202,32 +172,29 @@ namespace VPet.Plugin.VPetTTS
             }
             ProviderConfigPanel.Children.Add(apiModeCombo);
 
-            AddConfigLabel("🎵 参考音频路径");
-            var referWavBox = CreateTextBox("GPTSoVITS_ReferWavPath", vts.Set.GPTSoVITS.ReferWavPath);
-            ProviderConfigPanel.Children.Add(referWavBox);
+            AddConfigLabel("参考音频路径".Translate());
+            AddTextBox("GPTSoVITS_ReferWavPath", vts.Set.GPTSoVITS.ReferWavPath);
 
-            AddConfigLabel("📝 提示文本");
-            var promptTextBox = CreateTextBox("GPTSoVITS_PromptText", vts.Set.GPTSoVITS.PromptText);
-            ProviderConfigPanel.Children.Add(promptTextBox);
+            AddConfigLabel("提示文本".Translate());
+            AddTextBox("GPTSoVITS_PromptText", vts.Set.GPTSoVITS.PromptText);
         }
 
         private void AddURLConfig()
         {
-            AddConfigLabel("🌐 Base URL");
-            var baseUrlBox = CreateTextBox("URL_BaseUrl", vts.Set.URL.BaseUrl);
-            ProviderConfigPanel.Children.Add(baseUrlBox);
+            AddConfigLabel("Base URL");
+            AddTextBox("URL_BaseUrl", vts.Set.URL.BaseUrl);
 
-            AddConfigLabel("🎙️ Voice ID");
-            var voiceBox = CreateTextBox("URL_Voice", vts.Set.URL.Voice);
-            ProviderConfigPanel.Children.Add(voiceBox);
+            AddConfigLabel("Voice ID");
+            AddTextBox("URL_Voice", vts.Set.URL.Voice);
 
-            AddConfigLabel("📡 HTTP 方法");
-            var methodCombo = CreateComboBox("URL_Method");
+            AddConfigLabel("HTTP 方法".Translate());
+            var methodCombo = new ComboBox { Name = "URL_Method", Margin = new Thickness(0, 0, 0, 8) };
+            methodCombo.SetResourceReference(StyleProperty, "StandardComboBoxStyle");
             methodCombo.Items.Add(new ComboBoxItem { Content = "GET", Tag = "GET" });
             methodCombo.Items.Add(new ComboBoxItem { Content = "POST", Tag = "POST" });
             foreach (ComboBoxItem item in methodCombo.Items)
             {
-                if (item.Tag.ToString() == vts.Set.URL.Method)
+                if (item.Tag?.ToString() == vts.Set.URL.Method)
                 {
                     methodCombo.SelectedItem = item;
                     break;
@@ -238,17 +205,17 @@ namespace VPet.Plugin.VPetTTS
 
         private void AddDIYConfig()
         {
-            AddConfigLabel("🌐 Base URL");
-            var baseUrlBox = CreateTextBox("DIY_BaseUrl", vts.Set.DIY.BaseUrl);
-            ProviderConfigPanel.Children.Add(baseUrlBox);
+            AddConfigLabel("Base URL");
+            AddTextBox("DIY_BaseUrl", vts.Set.DIY.BaseUrl);
 
-            AddConfigLabel("📡 HTTP 方法");
-            var methodCombo = CreateComboBox("DIY_Method");
+            AddConfigLabel("HTTP 方法".Translate());
+            var methodCombo = new ComboBox { Name = "DIY_Method", Margin = new Thickness(0, 0, 0, 8) };
+            methodCombo.SetResourceReference(StyleProperty, "StandardComboBoxStyle");
             methodCombo.Items.Add(new ComboBoxItem { Content = "GET", Tag = "GET" });
             methodCombo.Items.Add(new ComboBoxItem { Content = "POST", Tag = "POST" });
             foreach (ComboBoxItem item in methodCombo.Items)
             {
-                if (item.Tag.ToString() == vts.Set.DIY.Method)
+                if (item.Tag?.ToString() == vts.Set.DIY.Method)
                 {
                     methodCombo.SelectedItem = item;
                     break;
@@ -256,74 +223,51 @@ namespace VPet.Plugin.VPetTTS
             }
             ProviderConfigPanel.Children.Add(methodCombo);
 
-            AddConfigLabel("📋 Content-Type");
-            var contentTypeBox = CreateTextBox("DIY_ContentType", vts.Set.DIY.ContentType);
-            ProviderConfigPanel.Children.Add(contentTypeBox);
+            AddConfigLabel("Content-Type");
+            AddTextBox("DIY_ContentType", vts.Set.DIY.ContentType);
 
-            AddConfigLabel("📝 请求体 (使用 {text} 作为文本占位符)");
+            AddConfigLabel("请求体 (使用 {text} 作为文本占位符)".Translate());
             var requestBodyBox = new TextBox 
             { 
                 Name = "DIY_RequestBody", 
                 Text = vts.Set.DIY.RequestBody,
                 AcceptsReturn = true, 
-                Height = 80, 
-                Margin = new Thickness(0, 0, 0, 12),
-                Padding = new Thickness(10, 8, 10, 8),
-                FontSize = 13,
-                BorderBrush = BorderColor,
+                Height = 60, 
+                Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
             ProviderConfigPanel.Children.Add(requestBodyBox);
         }
         
-        // 辅助方法：创建配置标签
         private void AddConfigLabel(string text)
         {
             var label = new TextBlock 
             { 
                 Text = text, 
-                Foreground = SubTextColor,
-                FontSize = 13,
-                Margin = new Thickness(0, 0, 0, 6) 
+                Margin = new Thickness(0, 0, 0, 4) 
             };
             ProviderConfigPanel.Children.Add(label);
         }
         
-        // 辅助方法：创建文本框
-        private TextBox CreateTextBox(string name, string text)
+        private void AddTextBox(string name, string text)
         {
-            return new TextBox 
+            var textBox = new TextBox 
             { 
                 Name = name, 
-                Text = text, 
-                Margin = new Thickness(0, 0, 0, 12),
-                Padding = new Thickness(10, 8, 10, 8),
-                FontSize = 13,
-                BorderBrush = BorderColor
+                Text = text ?? "", 
+                Margin = new Thickness(0, 0, 0, 8),
+                Padding = new Thickness(5, 3, 5, 3)
             };
-        }
-        
-        // 辅助方法：创建下拉框
-        private ComboBox CreateComboBox(string name)
-        {
-            return new ComboBox 
-            { 
-                Name = name, 
-                Margin = new Thickness(0, 0, 0, 12),
-                Padding = new Thickness(10, 8, 10, 8),
-                FontSize = 13,
-                MinHeight = 36,
-                VerticalContentAlignment = VerticalAlignment.Center
-            };
+            ProviderConfigPanel.Children.Add(textBox);
         }
 
         private void SaveProviderConfig()
         {
             if (CombProvider.SelectedItem is ComboBoxItem selectedItem)
             {
-                var provider = selectedItem.Tag.ToString();
-                vts.Set.Provider = provider;
+                var provider = selectedItem.Tag?.ToString();
+                vts.Set.Provider = provider ?? "Free";
 
                 switch (provider)
                 {
@@ -348,75 +292,57 @@ namespace VPet.Plugin.VPetTTS
 
         private void SaveFreeConfig()
         {
-            var langCombo = FindComboBox("Free_TextLanguage");
+            var langCombo = FindControl<ComboBox>("Free_TextLanguage");
             if (langCombo?.SelectedItem is ComboBoxItem item)
-            {
-                vts.Set.Free.TextLanguage = item.Tag.ToString();
-            }
+                vts.Set.Free.TextLanguage = item.Tag?.ToString() ?? "auto";
         }
 
         private void SaveOpenAIConfig()
         {
-            vts.Set.OpenAI.ApiKey = FindTextBox("OpenAI_ApiKey")?.Text ?? "";
-            vts.Set.OpenAI.BaseUrl = FindTextBox("OpenAI_BaseUrl")?.Text ?? "";
-            vts.Set.OpenAI.Model = FindTextBox("OpenAI_Model")?.Text ?? "";
-            vts.Set.OpenAI.Voice = FindTextBox("OpenAI_Voice")?.Text ?? "";
+            vts.Set.OpenAI.ApiKey = FindControl<TextBox>("OpenAI_ApiKey")?.Text ?? "";
+            vts.Set.OpenAI.BaseUrl = FindControl<TextBox>("OpenAI_BaseUrl")?.Text ?? "";
+            vts.Set.OpenAI.Model = FindControl<TextBox>("OpenAI_Model")?.Text ?? "";
+            vts.Set.OpenAI.Voice = FindControl<TextBox>("OpenAI_Voice")?.Text ?? "";
         }
 
         private void SaveGPTSoVITSConfig()
         {
-            vts.Set.GPTSoVITS.BaseUrl = FindTextBox("GPTSoVITS_BaseUrl")?.Text ?? "";
-            vts.Set.GPTSoVITS.ReferWavPath = FindTextBox("GPTSoVITS_ReferWavPath")?.Text ?? "";
-            vts.Set.GPTSoVITS.PromptText = FindTextBox("GPTSoVITS_PromptText")?.Text ?? "";
+            vts.Set.GPTSoVITS.BaseUrl = FindControl<TextBox>("GPTSoVITS_BaseUrl")?.Text ?? "";
+            vts.Set.GPTSoVITS.ReferWavPath = FindControl<TextBox>("GPTSoVITS_ReferWavPath")?.Text ?? "";
+            vts.Set.GPTSoVITS.PromptText = FindControl<TextBox>("GPTSoVITS_PromptText")?.Text ?? "";
             
-            var apiModeCombo = FindComboBox("GPTSoVITS_ApiMode");
+            var apiModeCombo = FindControl<ComboBox>("GPTSoVITS_ApiMode");
             if (apiModeCombo?.SelectedItem is ComboBoxItem item)
-            {
-                vts.Set.GPTSoVITS.ApiMode = item.Tag.ToString();
-            }
+                vts.Set.GPTSoVITS.ApiMode = item.Tag?.ToString() ?? "WebUI";
         }
 
         private void SaveURLConfig()
         {
-            vts.Set.URL.BaseUrl = FindTextBox("URL_BaseUrl")?.Text ?? "";
-            vts.Set.URL.Voice = FindTextBox("URL_Voice")?.Text ?? "";
+            vts.Set.URL.BaseUrl = FindControl<TextBox>("URL_BaseUrl")?.Text ?? "";
+            vts.Set.URL.Voice = FindControl<TextBox>("URL_Voice")?.Text ?? "";
             
-            var methodCombo = FindComboBox("URL_Method");
+            var methodCombo = FindControl<ComboBox>("URL_Method");
             if (methodCombo?.SelectedItem is ComboBoxItem item)
-            {
-                vts.Set.URL.Method = item.Tag.ToString();
-            }
+                vts.Set.URL.Method = item.Tag?.ToString() ?? "GET";
         }
 
         private void SaveDIYConfig()
         {
-            vts.Set.DIY.BaseUrl = FindTextBox("DIY_BaseUrl")?.Text ?? "";
-            vts.Set.DIY.ContentType = FindTextBox("DIY_ContentType")?.Text ?? "";
-            vts.Set.DIY.RequestBody = FindTextBox("DIY_RequestBody")?.Text ?? "";
+            vts.Set.DIY.BaseUrl = FindControl<TextBox>("DIY_BaseUrl")?.Text ?? "";
+            vts.Set.DIY.ContentType = FindControl<TextBox>("DIY_ContentType")?.Text ?? "";
+            vts.Set.DIY.RequestBody = FindControl<TextBox>("DIY_RequestBody")?.Text ?? "";
             
-            var methodCombo = FindComboBox("DIY_Method");
+            var methodCombo = FindControl<ComboBox>("DIY_Method");
             if (methodCombo?.SelectedItem is ComboBoxItem item)
-            {
-                vts.Set.DIY.Method = item.Tag.ToString();
-            }
+                vts.Set.DIY.Method = item.Tag?.ToString() ?? "POST";
         }
 
-        private TextBox FindTextBox(string name)
+        private T FindControl<T>(string name) where T : FrameworkElement
         {
             foreach (var child in ProviderConfigPanel.Children)
             {
-                if (child is TextBox textBox && textBox.Name == name)
-                    return textBox;
-            }
-            return null;
-        }
-
-        private ComboBox FindComboBox(string name)
-        {
-            foreach (var child in ProviderConfigPanel.Children)
-            {
-                if (child is ComboBox comboBox && comboBox.Name == name)
-                    return comboBox;
+                if (child is T control && control.Name == name)
+                    return control;
             }
             return null;
         }
@@ -425,7 +351,7 @@ namespace VPet.Plugin.VPetTTS
         {
             try
             {
-                // 保存基本设置
+                // 处理启用/禁用状态变更
                 if (vts.Set.Enable != SwitchOn.IsChecked.Value)
                 {
                     if (SwitchOn.IsChecked.Value)
@@ -435,6 +361,7 @@ namespace VPet.Plugin.VPetTTS
                     vts.Set.Enable = SwitchOn.IsChecked.Value;
                 }
 
+                // 保存基本设置
                 vts.Set.Volume = VolumeSilder.Value;
                 vts.Set.Speed = SpeedSilder.Value;
                 vts.Set.EnableCache = EnableCache.IsChecked.Value;
@@ -444,9 +371,7 @@ namespace VPet.Plugin.VPetTTS
                 vts.Set.Proxy.FollowSystemProxy = FollowSystemProxy.IsChecked.Value;
                 vts.Set.Proxy.Address = ProxyAddress.Text;
                 if (ProxyProtocol.SelectedItem is ComboBoxItem protocolItem)
-                {
-                    vts.Set.Proxy.Protocol = protocolItem.Tag.ToString();
-                }
+                    vts.Set.Proxy.Protocol = protocolItem.Tag?.ToString() ?? "http";
 
                 // 保存提供商配置
                 SaveProviderConfig();
@@ -456,21 +381,15 @@ namespace VPet.Plugin.VPetTTS
                 vts.MW.Set["VPetTTS"] = LPSConvert.SerializeObject(vts.Set, "VPetTTS");
 
                 // 刷新 TTS 管理器设置
-                vts.ttsManager.RefreshSettings();
+                vts.ttsManager?.RefreshSettings();
 
-                MessageBox.Show("设置已保存", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                // 关闭窗口
+                Close();
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"保存设置失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxX.Show($"保存设置失败: {ex.Message}".Translate(), "错误".Translate());
             }
-        }
-
-        private void Cancel_Click(object sender, RoutedEventArgs e)
-        {
-            // 恢复原始设置
-            vts.Set = originalSettings;
-            Close();
         }
 
         private async void Test_Click(object sender, RoutedEventArgs e)
@@ -486,12 +405,12 @@ namespace VPet.Plugin.VPetTTS
                 var success = await vts.TestTTSAsync();
                 if (!success)
                 {
-                    MessageBox.Show("TTS 测试失败，请检查配置", "测试失败", MessageBoxButton.OK, MessageBoxImage.Warning);
+                    MessageBoxX.Show("TTS 测试失败，请检查配置".Translate(), "测试失败".Translate());
                 }
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"测试失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxX.Show($"测试失败: {ex.Message}".Translate(), "错误".Translate());
             }
             finally
             {
@@ -504,11 +423,11 @@ namespace VPet.Plugin.VPetTTS
             try
             {
                 vts.ClearCache();
-                MessageBox.Show("缓存已清理", "提示", MessageBoxButton.OK, MessageBoxImage.Information);
+                MessageBoxX.Show("缓存已清理".Translate(), "提示".Translate());
             }
             catch (Exception ex)
             {
-                MessageBox.Show($"清理缓存失败: {ex.Message}", "错误", MessageBoxButton.OK, MessageBoxImage.Error);
+                MessageBoxX.Show($"清理缓存失败: {ex.Message}".Translate(), "错误".Translate());
             }
         }
 
