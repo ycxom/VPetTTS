@@ -4,9 +4,9 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using VPet.Plugin.VPetTTS.Utils;
+using Vpet.Plugin.CustomTTS.Utils;
 
-namespace VPet.Plugin.VPetTTS.Core.Providers
+namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
     /// <summary>
     /// Free TTS 实现 (POST API 格式)

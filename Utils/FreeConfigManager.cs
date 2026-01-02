@@ -6,7 +6,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json.Linq;
 
-namespace VPet.Plugin.VPetTTS.Utils
+namespace Vpet.Plugin.CustomTTS.Utils
 {
     /// <summary>
     /// Free配置管理器 - 从服务器下载并管理加密配置

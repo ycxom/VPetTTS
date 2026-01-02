@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using VPet.Plugin.VPetTTS.Core.Providers;
+using Vpet.Plugin.CustomTTS.Core.Providers;
 
-namespace VPet.Plugin.VPetTTS.Core
+namespace Vpet.Plugin.CustomTTS.Core
 {
     /// <summary>
     /// TTS管理器

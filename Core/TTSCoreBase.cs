@@ -3,7 +3,7 @@ using System.Net;
 using System.Net.Http;
 using System.Threading.Tasks;
 
-namespace VPet.Plugin.VPetTTS.Core
+namespace Vpet.Plugin.CustomTTS.Core
 {
     /// <summary>
     /// TTS服务核心基类

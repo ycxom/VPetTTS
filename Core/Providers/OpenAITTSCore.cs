@@ -4,7 +4,7 @@ using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
-namespace VPet.Plugin.VPetTTS.Core.Providers
+namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
     /// <summary>
     /// OpenAI TTS 实现

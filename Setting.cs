@@ -2,7 +2,7 @@ using LinePutScript.Converter;
 using System;
 using System.Collections.Generic;
 
-namespace VPet.Plugin.VPetTTS
+namespace Vpet.Plugin.CustomTTS
 {
     public class Setting
     {

@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Threading.Tasks;
 using System.Web;
 
-namespace VPet.Plugin.VPetTTS.Core.Providers
+namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
     /// <summary>
     /// URL TTS 实现

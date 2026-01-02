@@ -6,7 +6,7 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v8.0": {
-      "VPet.Plugin.VPetTTS/1.0.0": {
+      "VPet.Plugin.CustomTTS/1.0.0": {
         "dependencies": {
           "LinePutScript": "1.11.9",
           "LinePutScript.Localization.WPF": "1.0.7",
@@ -20,7 +20,7 @@
           "VPet-Simulator.Windows.Interface": "1.1.0.58"
         },
         "runtime": {
-          "VPet.Plugin.VPetTTS.dll": {}
+          "VPet.Plugin.CustomTTS.dll": {}
         }
       },
       "LinePutScript/1.11.9": {
@@ -156,7 +156,7 @@
     }
   },
   "libraries": {
-    "VPet.Plugin.VPetTTS/1.0.0": {
+    "VPet.Plugin.CustomTTS/1.0.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
