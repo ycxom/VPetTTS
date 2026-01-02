@@ -7,7 +7,7 @@ using LinePutScript.Converter;
 using LinePutScript.Localization.WPF;
 using Panuon.WPF.UI;
 
-namespace VPet.Plugin.VPetTTS
+namespace Vpet.Plugin.CustomTTS
 {
     /// <summary>
     /// winSetting.xaml 的交互逻辑

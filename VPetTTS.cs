@@ -9,9 +9,9 @@ using VPet_Simulator.Core;
 using LinePutScript.Converter;
 using LinePutScript;
 using LinePutScript.Localization.WPF;
-using VPet.Plugin.VPetTTS.Core;
+using Vpet.Plugin.CustomTTS.Core;
 
-namespace VPet.Plugin.VPetTTS
+namespace Vpet.Plugin.CustomTTS
 {
     public class VPetTTS : MainPlugin
     {

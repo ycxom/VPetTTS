@@ -3,7 +3,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 
-namespace VPet.Plugin.VPetTTS.Core.Providers
+namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
     /// <summary>
     /// DIY TTS 实现
