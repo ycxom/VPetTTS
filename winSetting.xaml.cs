@@ -64,6 +64,53 @@ namespace Vpet.Plugin.CustomTTS
 
             UpdateProviderConfig();
             UpdateSpeedText();
+            
+            // 更新软禁用状态显示
+            UpdateSoftDisableStatus();
+        }
+
+        /// <summary>
+        /// 更新软禁用状态显示
+        /// </summary>
+        private void UpdateSoftDisableStatus()
+        {
+            try
+            {
+                // 实时重新检测其他 TTS 插件状态
+                vts.RefreshSoftDisableStatus();
+                
+                // 查找软禁用警告文本
+                var warningText = this.FindName("SoftDisableWarning") as TextBlock;
+                
+                if (vts.IsSoftDisabled)
+                {
+                    var pluginNames = vts.DetectedOtherTTSPluginNames.Translate();
+                    // 使用带占位符的本地化字符串
+                    var template = "⚠ 检测到 {0} 插件已启用，TTS 将在运行时自动跳过".Translate();
+                    var message = string.Format(template, pluginNames);
+                    
+                    if (warningText != null)
+                    {
+                        warningText.Text = message;
+                        warningText.Visibility = Visibility.Visible;
+                    }
+                    else
+                    {
+                        Console.WriteLine($"[VPetTTS] {message}");
+                    }
+                }
+                else
+                {
+                    if (warningText != null)
+                    {
+                        warningText.Visibility = Visibility.Collapsed;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VPetTTS] 更新软禁用状态显示时发生错误: {ex.Message}");
+            }
         }
 
         private void SetupEventHandlers()

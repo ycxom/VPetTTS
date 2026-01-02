@@ -30,3 +30,5 @@ Free TTS 使用免费服务#Free TTS 使用免費服務:|
 粤语#粵語:|
 韩语#韓語:|
 auto: 自动检测语言\nzh: 中文\nen: 英语\nja: 日语\nyue: 粤语\nko: 韩语#auto: 自動檢測語言\nzh: 中文\nen: 英語\nja: 日語\nyue: 粵語\nko: 韓語:|
+⚠ 检测到 {0} 插件已启用，TTS 将在运行时自动跳过#⚠ 偵測到 {0} 插件已啟用，TTS 將在運行時自動跳過:|
+VPetLLM (内置TTS)#VPetLLM (內建TTS):|

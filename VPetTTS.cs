@@ -28,6 +28,11 @@ namespace Vpet.Plugin.CustomTTS
         private VPetLLMDetectionResult _vpetLLMDetectionResult;
 
         /// <summary>
+        /// 其他 TTS 插件检测结果
+        /// </summary>
+        private OtherTTSPluginDetectionResult _otherTTSPluginDetectionResult;
+
+        /// <summary>
         /// mpv 播放器实例（如果 VPetLLM 已安装）
         /// </summary>
         private MpvPlayer _mpvPlayer;
@@ -36,6 +41,30 @@ namespace Vpet.Plugin.CustomTTS
         /// 是否使用 mpv 播放器
         /// </summary>
         public bool UseMpvPlayer => _mpvPlayer != null;
+
+        /// <summary>
+        /// 是否应该软禁用（因为检测到其他 TTS 插件）
+        /// 软禁用：不修改用户设置，只在运行时跳过 TTS
+        /// </summary>
+        private bool _softDisabled = false;
+
+        /// <summary>
+        /// 获取软禁用状态（供设置窗口使用）
+        /// </summary>
+        public bool IsSoftDisabled => _softDisabled;
+
+        /// <summary>
+        /// 获取检测到的其他 TTS 插件名称（供设置窗口使用）
+        /// </summary>
+        public string DetectedOtherTTSPluginNames => _otherTTSPluginDetectionResult?.PluginNames ?? "";
+
+        /// <summary>
+        /// 刷新软禁用状态（供设置窗口调用）
+        /// </summary>
+        public void RefreshSoftDisableStatus()
+        {
+            DetectOtherTTSPlugins();
+        }
 
         public VPetTTS(IMainWindow mainwin) : base(mainwin)
         {
@@ -46,6 +75,9 @@ namespace Vpet.Plugin.CustomTTS
             // 加载设置
             Set = LPSConvert.DeserializeObject<Setting>(MW.Set["VPetTTS"]);
             Set?.Validate();
+
+            // 检测其他 TTS 插件（软禁用检测）
+            DetectOtherTTSPlugins();
 
             // 创建缓存目录
             if (!Directory.Exists(GraphCore.CachePath + @"\tts"))
@@ -72,6 +104,7 @@ namespace Vpet.Plugin.CustomTTS
             ttsManager = new TTSManager(Set);
 
             // 如果启用TTS，注册SayProcess事件
+            // 软禁用模式：即使检测到其他插件也注册事件，在运行时检测并跳过
             if (Set.Enable)
                 MW.Main.SayProcess.Add(Main_OnSay);
 
@@ -85,6 +118,71 @@ namespace Vpet.Plugin.CustomTTS
             };
             menuItem.Click += (s, e) => { Setting(); };
             modset.Items.Add(menuItem);
+
+            // 记录软禁用状态
+            if (_softDisabled)
+            {
+                LogMessage($"检测到其他已启用的 TTS 插件 ({_otherTTSPluginDetectionResult.PluginNames})，VPetTTS 将在运行时自动跳过");
+            }
+        }
+
+        /// <summary>
+        /// 检测其他 TTS 插件（软禁用模式）
+        /// </summary>
+        private void DetectOtherTTSPlugins()
+        {
+            try
+            {
+                _otherTTSPluginDetectionResult = OtherTTSPluginDetector.DetectOtherTTSPlugins(MW, PluginName);
+
+                if (_otherTTSPluginDetectionResult.HasOtherEnabledTTSPlugin)
+                {
+                    // 软禁用：只设置标记，不修改用户设置
+                    _softDisabled = true;
+                }
+                else
+                {
+                    _softDisabled = false;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"检测其他 TTS 插件时发生错误: {ex.Message}");
+                _softDisabled = false;
+            }
+        }
+
+        /// <summary>
+        /// 实时检测是否应该跳过 TTS（软禁用检测）
+        /// </summary>
+        private bool ShouldSkipTTS()
+        {
+            try
+            {
+                // 重新检测其他 TTS 插件状态
+                var result = OtherTTSPluginDetector.DetectOtherTTSPlugins(MW, PluginName);
+                var shouldSkip = result.HasOtherEnabledTTSPlugin;
+                
+                // 更新软禁用状态
+                if (shouldSkip != _softDisabled)
+                {
+                    _softDisabled = shouldSkip;
+                    if (shouldSkip)
+                    {
+                        LogMessage($"检测到其他 TTS 插件已启用 ({result.PluginNames})，跳过 TTS");
+                    }
+                    else
+                    {
+                        LogMessage("其他 TTS 插件已禁用，恢复 TTS 功能");
+                    }
+                }
+                
+                return shouldSkip;
+            }
+            catch
+            {
+                return false;
+            }
         }
 
         /// <summary>
@@ -147,6 +245,13 @@ namespace Vpet.Plugin.CustomTTS
             {
                 if (!Set.Enable)
                     return;
+
+                // 实时检测是否应该跳过 TTS（软禁用）
+                if (ShouldSkipTTS())
+                {
+                    LogMessage("软禁用：检测到其他 TTS 插件已启用，跳过本次 TTS");
+                    return;
+                }
 
                 // 获取说话文本
                 var saythings = await sayInfo.GetSayText();

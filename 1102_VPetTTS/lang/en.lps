@@ -30,3 +30,5 @@ Free TTS 使用免费服务#Free TTS uses free service:|
 粤语#Cantonese:|
 韩语#Korean:|
 auto: 自动检测语言\nzh: 中文\nen: 英语\nja: 日语\nyue: 粤语\nko: 韩语#auto: Auto detect\nzh: Chinese\nen: English\nja: Japanese\nyue: Cantonese\nko: Korean:|
+⚠ 检测到 {0} 插件已启用，TTS 将在运行时自动跳过#⚠ {0} plugin detected and enabled. TTS will be automatically skipped at runtime:|
+VPetLLM (内置TTS)#VPetLLM (Built-in TTS):|
