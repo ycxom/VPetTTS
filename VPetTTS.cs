@@ -10,6 +10,7 @@ using LinePutScript.Converter;
 using LinePutScript;
 using LinePutScript.Localization.WPF;
 using Vpet.Plugin.CustomTTS.Core;
+using Vpet.Plugin.CustomTTS.Utils;
 
 namespace Vpet.Plugin.CustomTTS
 {
@@ -20,6 +21,21 @@ namespace Vpet.Plugin.CustomTTS
         public Setting Set;
         public TTSManager ttsManager;
         public winSetting winSetting;
+
+        /// <summary>
+        /// VPetLLM 检测结果
+        /// </summary>
+        private VPetLLMDetectionResult _vpetLLMDetectionResult;
+
+        /// <summary>
+        /// mpv 播放器实例（如果 VPetLLM 已安装）
+        /// </summary>
+        private MpvPlayer _mpvPlayer;
+
+        /// <summary>
+        /// 是否使用 mpv 播放器
+        /// </summary>
+        public bool UseMpvPlayer => _mpvPlayer != null;
 
         public VPetTTS(IMainWindow mainwin) : base(mainwin)
         {
@@ -34,6 +50,9 @@ namespace Vpet.Plugin.CustomTTS
             // 创建缓存目录
             if (!Directory.Exists(GraphCore.CachePath + @"\tts"))
                 Directory.CreateDirectory(GraphCore.CachePath + @"\tts");
+
+            // 检测 VPetLLM 插件并初始化 mpv 播放器
+            DetectAndInitializeMpvPlayer();
 
             // 初始化Free TTS配置（异步）
             _ = Task.Run(async () =>
@@ -69,6 +88,57 @@ namespace Vpet.Plugin.CustomTTS
         }
 
         /// <summary>
+        /// 检测 VPetLLM 插件并初始化 mpv 播放器
+        /// </summary>
+        private void DetectAndInitializeMpvPlayer()
+        {
+            try
+            {
+                _vpetLLMDetectionResult = VPetLLMDetector.DetectVPetLLM(MW);
+
+                if (_vpetLLMDetectionResult.CanUseMpvPlayer)
+                {
+                    _mpvPlayer = new MpvPlayer(_vpetLLMDetectionResult.MpvExePath);
+                    _mpvPlayer.SetVolume(Set.Volume);
+                    LogMessage($"已检测到 VPetLLM 插件，将使用 mpv 播放器实现高码率音频播放");
+                }
+                else if (_vpetLLMDetectionResult.PluginExists)
+                {
+                    LogMessage("已检测到 VPetLLM 插件，但 mpv 播放器不可用，将使用 VPet 内置播放器");
+                }
+                else
+                {
+                    LogMessage("未检测到 VPetLLM 插件，将使用 VPet 内置播放器");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"检测 VPetLLM 插件时发生错误: {ex.Message}");
+                _mpvPlayer = null;
+            }
+        }
+
+        /// <summary>
+        /// 播放音频文件（自动选择播放器）
+        /// </summary>
+        private async Task PlayAudioAsync(string path)
+        {
+            if (_mpvPlayer != null)
+            {
+                // 使用 mpv 播放器（高码率支持）
+                await _mpvPlayer.PlayAsync(path);
+            }
+            else
+            {
+                // 使用 VPet 内置播放器
+                Application.Current.Dispatcher.Invoke(() =>
+                {
+                    MW.Main.PlayVoice(new Uri(path));
+                });
+            }
+        }
+
+        /// <summary>
         /// 处理说话事件
         /// </summary>
         public async void Main_OnSay(VPet_Simulator.Core.SayInfo sayInfo)
@@ -93,7 +163,7 @@ namespace Vpet.Plugin.CustomTTS
                 // 检查缓存
                 if (Set.EnableCache && File.Exists(path))
                 {
-                    MW.Main.PlayVoice(new Uri(path));
+                    await PlayAudioAsync(path);
                     return;
                 }
 
@@ -115,7 +185,7 @@ namespace Vpet.Plugin.CustomTTS
                     }
 
                     // 播放音频
-                    MW.Main.PlayVoice(new Uri(path));
+                    await PlayAudioAsync(path);
 
                     // 如果不使用缓存，延迟删除临时文件
                     if (!Set.EnableCache)
@@ -177,10 +247,8 @@ namespace Vpet.Plugin.CustomTTS
                     tempPath = Path.ChangeExtension(tempPath, "mp3");
                     await File.WriteAllBytesAsync(tempPath, audioData);
                     
-                    Application.Current.Dispatcher.Invoke(() =>
-                    {
-                        MW.Main.PlayVoice(new Uri(tempPath));
-                    });
+                    // 使用自动选择的播放器
+                    await PlayAudioAsync(tempPath);
 
                     // 延迟删除临时文件
                     _ = Task.Delay(TimeSpan.FromSeconds(10)).ContinueWith(_ =>
