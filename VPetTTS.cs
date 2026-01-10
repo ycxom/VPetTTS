@@ -105,6 +105,9 @@ namespace Vpet.Plugin.CustomTTS
             Set = LPSConvert.DeserializeObject<Setting>(MW.Set["VPetTTS"]);
             Set?.Validate();
 
+            // 初始化认证签名助手
+            InitializeAuthProviders();
+
             // 初始化状态管理器
             _stateManager = new TTSStateManager(Set);
             LogMessage("TTS 状态管理器已初始化");
@@ -189,6 +192,52 @@ namespace Vpet.Plugin.CustomTTS
             {
                 LogMessage($"检测其他 TTS 插件时发生错误: {ex.Message}");
                 _softDisabled = false;
+            }
+        }
+
+        /// <summary>
+        /// 初始化认证签名助手
+        /// </summary>
+        private void InitializeAuthProviders()
+        {
+            try
+            {
+                Func<ulong> getSteamId = () =>
+                {
+                    try { return MW?.SteamID ?? 0; } catch { return 0; }
+                };
+
+                Func<Task<int>> getAuthKey = async () =>
+                {
+                    try { return MW != null ? await MW.GenerateAuthKey() : 0; } catch { return 0; }
+                };
+
+                Func<string> getModId = () =>
+                {
+                    try
+                    {
+                        var dllPath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
+                        if (string.IsNullOrEmpty(dllPath)) return "";
+                        
+                        foreach (var mod in MW.OnModInfo)
+                        {
+                            if (mod.Path != null && dllPath.StartsWith(mod.Path.FullName, StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (mod.ItemID > 0)
+                                    return mod.ItemID.ToString();
+                            }
+                        }
+                        return "";
+                    }
+                    catch { return ""; }
+                };
+
+                Utils.RequestSignatureHelper.Init(getSteamId, getAuthKey, getModId);
+                LogMessage("认证签名助手初始化完成");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"初始化认证签名助手失败: {ex.Message}");
             }
         }
 
