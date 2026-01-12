@@ -33,11 +33,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
     {
         /// <summary>
         /// 已知的其他 TTS 插件名称列表
+        /// 注意：VPetTTS 不再避让 VPetLLM 内置 TTS，VPetLLM 内置 TTS 会自动避让 VPetTTS
         /// </summary>
         private static readonly string[] KNOWN_TTS_PLUGINS = new[]
         {
             "EdgeTTS",      // VPet.Plugin.EdgeTTS
-            "VPetLLM",      // VPetLLM 内置 TTS
+            // VPetLLM 已移除 - VPetTTS 不再检测和避让 VPetLLM 内置 TTS
             // 可以在这里添加更多已知的 TTS 插件名称
         };
 
@@ -73,31 +74,15 @@ namespace Vpet.Plugin.CustomTTS.Utils
                         {
                             if (string.Equals(pluginName, knownPlugin, StringComparison.OrdinalIgnoreCase))
                             {
-                                // 特殊处理 VPetLLM：检查其 TTS 功能是否启用
-                                if (string.Equals(pluginName, "VPetLLM", StringComparison.OrdinalIgnoreCase))
+                                // 检查插件是否启用
+                                if (CheckPluginEnabled(plugin))
                                 {
-                                    if (CheckVPetLLMTTSEnabled(plugin))
-                                    {
-                                        result.DetectedPlugins.Add("VPetLLM (内置TTS)");
-                                        Console.WriteLine($"[VPetTTS] 检测到 VPetLLM 内置 TTS 已启用");
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine($"[VPetTTS] VPetLLM 存在但内置 TTS 未启用");
-                                    }
+                                    result.DetectedPlugins.Add(pluginName);
+                                    Console.WriteLine($"[VPetTTS] 检测到其他已启用的 TTS 插件: {pluginName}");
                                 }
                                 else
                                 {
-                                    // 其他 TTS 插件：检查插件是否启用
-                                    if (CheckPluginEnabled(plugin))
-                                    {
-                                        result.DetectedPlugins.Add(pluginName);
-                                        Console.WriteLine($"[VPetTTS] 检测到其他已启用的 TTS 插件: {pluginName}");
-                                    }
-                                    else
-                                    {
-                                        Console.WriteLine($"[VPetTTS] 检测到其他 TTS 插件但未启用: {pluginName}");
-                                    }
+                                    Console.WriteLine($"[VPetTTS] 检测到其他 TTS 插件但未启用: {pluginName}");
                                 }
                                 break;
                             }
@@ -115,67 +100,6 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
 
             return result;
-        }
-
-        /// <summary>
-        /// 检查 VPetLLM 的 TTS 功能是否启用
-        /// 通过反射访问 Settings.TTS.IsEnabled 属性
-        /// </summary>
-        private static bool CheckVPetLLMTTSEnabled(MainPlugin plugin)
-        {
-            try
-            {
-                // 获取 Settings 属性
-                var settingsProperty = plugin.GetType().GetProperty("Settings");
-                if (settingsProperty == null)
-                {
-                    Console.WriteLine("[VPetTTS] VPetLLM 没有 Settings 属性");
-                    return false;
-                }
-
-                var settings = settingsProperty.GetValue(plugin);
-                if (settings == null)
-                {
-                    Console.WriteLine("[VPetTTS] VPetLLM Settings 为 null");
-                    return false;
-                }
-
-                // 获取 TTS 属性
-                var ttsProperty = settings.GetType().GetProperty("TTS");
-                if (ttsProperty == null)
-                {
-                    Console.WriteLine("[VPetTTS] VPetLLM Settings 没有 TTS 属性");
-                    return false;
-                }
-
-                var tts = ttsProperty.GetValue(settings);
-                if (tts == null)
-                {
-                    Console.WriteLine("[VPetTTS] VPetLLM TTS 设置为 null");
-                    return false;
-                }
-
-                // 获取 IsEnabled 属性
-                var isEnabledProperty = tts.GetType().GetProperty("IsEnabled");
-                if (isEnabledProperty == null)
-                {
-                    Console.WriteLine("[VPetTTS] VPetLLM TTS 没有 IsEnabled 属性");
-                    return false;
-                }
-
-                var isEnabled = isEnabledProperty.GetValue(tts);
-                if (isEnabled is bool enabled)
-                {
-                    return enabled;
-                }
-
-                return false;
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[VPetTTS] 检查 VPetLLM TTS 状态时发生错误: {ex.Message}");
-                return false;
-            }
         }
 
         /// <summary>

@@ -226,7 +226,7 @@ namespace Vpet.Plugin.CustomTTS
             // 记录软禁用状态
             if (_softDisabled)
             {
-                LogMessage($"检测到其他已启用的 TTS 插件 ({_otherTTSPluginDetectionResult.PluginNames})，VPetTTS 将在运行时自动跳过");
+                LogMessage($"检测到其他已启用的 TTS 插件 ({_otherTTSPluginDetectionResult.PluginNames})，VPetTTS 将在运行时自动跳过（不包括 VPetLLM 内置 TTS）");
             }
 
             // 通知可用性状态
@@ -246,6 +246,10 @@ namespace Vpet.Plugin.CustomTTS
 
         /// <summary>
         /// 检测其他 TTS 插件（软禁用模式）
+        /// </summary>
+        /// <summary>
+        /// 检测其他 TTS 插件（不包括 VPetLLM 内置 TTS）
+        /// VPetTTS 不再避让 VPetLLM，只检测真正的 TTS 插件冲突
         /// </summary>
         private void DetectOtherTTSPlugins()
         {
@@ -318,12 +322,13 @@ namespace Vpet.Plugin.CustomTTS
 
         /// <summary>
         /// 实时检测是否应该跳过 TTS（软禁用检测）
+        /// 注意：VPetTTS 不再避让 VPetLLM 内置 TTS，只检测其他真正的 TTS 插件冲突
         /// </summary>
         private bool ShouldSkipTTS()
         {
             try
             {
-                // 重新检测其他 TTS 插件状态
+                // 重新检测其他 TTS 插件状态（不包括 VPetLLM）
                 var result = OtherTTSPluginDetector.DetectOtherTTSPlugins(MW, PluginName);
                 var shouldSkip = result.HasOtherEnabledTTSPlugin;
                 
