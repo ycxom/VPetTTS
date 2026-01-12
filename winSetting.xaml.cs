@@ -469,12 +469,47 @@ namespace Vpet.Plugin.CustomTTS
         {
             try
             {
-                vts.ClearCache();
-                MessageBoxX.Show("缓存已清理".Translate(), "提示".Translate());
+                // 先显示缓存统计
+                var stats = vts.GetCacheStatistics();
+                string statsInfo = stats != null 
+                    ? $"当前缓存: {stats.TotalFiles} 个文件, {stats.TotalSizeFormatted}\n过期文件: {stats.ExpiredFiles} 个\n\n确定要清理所有缓存吗？"
+                    : "确定要清理所有缓存吗？";
+
+                var result = MessageBoxX.Show(statsInfo.Translate(), "清理缓存".Translate(), MessageBoxButton.YesNo);
+                if (result == MessageBoxResult.Yes)
+                {
+                    vts.ClearCache();
+                    MessageBoxX.Show("缓存已清理".Translate(), "提示".Translate());
+                }
             }
             catch (Exception ex)
             {
                 MessageBoxX.Show($"清理缓存失败: {ex.Message}".Translate(), "错误".Translate());
+            }
+        }
+
+        private void CleanupExpiredCache_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var deletedCount = vts.CleanupExpiredCache();
+                MessageBoxX.Show($"已清理 {deletedCount} 个过期缓存文件（超过7天未使用）".Translate(), "提示".Translate());
+            }
+            catch (Exception ex)
+            {
+                MessageBoxX.Show($"清理过期缓存失败: {ex.Message}".Translate(), "错误".Translate());
+            }
+        }
+
+        private void Debug_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                vts.OpenDebugWindow();
+            }
+            catch (Exception ex)
+            {
+                MessageBoxX.Show($"打开调试窗口失败: {ex.Message}".Translate(), "错误".Translate());
             }
         }
 
