@@ -28,6 +28,16 @@ namespace Vpet.Plugin.CustomTTS.Core
         private string _currentText = "";
         private double _progress;
 
+        // 播放进度信息（供 VPetLLM 读取）
+        private string _currentAudioPath = "";
+        private double _playbackProgress;
+        private long _playbackPositionMs;
+        private long _audioDurationMs = -1;
+        private DateTime _playbackStartTime = DateTime.MinValue;
+        private DateTime _estimatedPlaybackEndTime = DateTime.MinValue;
+        private volatile bool _isPlaybackComplete = true;
+        private DateTime _lastHeartbeatTime = DateTime.MinValue;
+
         // 错误状态
         private bool _hasError;
         private string _lastError = "";
@@ -179,6 +189,149 @@ namespace Vpet.Plugin.CustomTTS.Core
                 }
             }
         }
+
+        #region 播放进度属性实现（供 VPetLLM 读取）
+
+        public string CurrentAudioPath
+        {
+            get
+            {
+                lock (_lockObject)
+                {
+                    return _currentAudioPath;
+                }
+            }
+            private set
+            {
+                lock (_lockObject)
+                {
+                    _currentAudioPath = value ?? "";
+                }
+            }
+        }
+
+        public double PlaybackProgress
+        {
+            get
+            {
+                lock (_lockObject)
+                {
+                    return _playbackProgress;
+                }
+            }
+            private set
+            {
+                lock (_lockObject)
+                {
+                    _playbackProgress = Math.Max(0, Math.Min(1, value));
+                }
+            }
+        }
+
+        public long PlaybackPositionMs
+        {
+            get
+            {
+                lock (_lockObject)
+                {
+                    return _playbackPositionMs;
+                }
+            }
+            private set
+            {
+                lock (_lockObject)
+                {
+                    _playbackPositionMs = Math.Max(0, value);
+                }
+            }
+        }
+
+        public long AudioDurationMs
+        {
+            get
+            {
+                lock (_lockObject)
+                {
+                    return _audioDurationMs;
+                }
+            }
+            private set
+            {
+                lock (_lockObject)
+                {
+                    _audioDurationMs = value;
+                }
+            }
+        }
+
+        public DateTime PlaybackStartTime
+        {
+            get
+            {
+                lock (_lockObject)
+                {
+                    return _playbackStartTime;
+                }
+            }
+            private set
+            {
+                lock (_lockObject)
+                {
+                    _playbackStartTime = value;
+                }
+            }
+        }
+
+        public DateTime EstimatedPlaybackEndTime
+        {
+            get
+            {
+                lock (_lockObject)
+                {
+                    return _estimatedPlaybackEndTime;
+                }
+            }
+            private set
+            {
+                lock (_lockObject)
+                {
+                    _estimatedPlaybackEndTime = value;
+                }
+            }
+        }
+
+        public bool IsPlaybackComplete
+        {
+            get => _isPlaybackComplete;
+            private set
+            {
+                if (_isPlaybackComplete != value)
+                {
+                    _isPlaybackComplete = value;
+                    OnStateChanged(nameof(IsPlaybackComplete), !value, value);
+                }
+            }
+        }
+
+        public DateTime LastHeartbeatTime
+        {
+            get
+            {
+                lock (_lockObject)
+                {
+                    return _lastHeartbeatTime;
+                }
+            }
+            private set
+            {
+                lock (_lockObject)
+                {
+                    _lastHeartbeatTime = value;
+                }
+            }
+        }
+
+        #endregion
 
         public bool HasError
         {
@@ -364,16 +517,99 @@ namespace Vpet.Plugin.CustomTTS.Core
         {
             if (isPlaying)
             {
+                CurrentAudioPath = audioPath;
+                PlaybackStartTime = DateTime.Now;
+                PlaybackProgress = 0;
+                PlaybackPositionMs = 0;
+                IsPlaybackComplete = false;
+                LastHeartbeatTime = DateTime.Now;
                 IsPlaying = true;
 
                 OnPlaybackStarted(new TTSPlaybackEventArgs(audioPath, text));
             }
             else
             {
+                PlaybackProgress = 1;
+                IsPlaybackComplete = true;
+                LastHeartbeatTime = DateTime.Now;
                 IsPlaying = false;
 
                 OnPlaybackCompleted(new TTSPlaybackEventArgs(audioPath, text));
             }
+        }
+
+        /// <summary>
+        /// 设置播放状态（带音频时长信息）
+        /// </summary>
+        public void SetPlayingState(bool isPlaying, string audioPath, string text, long audioDurationMs)
+        {
+            if (isPlaying)
+            {
+                CurrentAudioPath = audioPath;
+                AudioDurationMs = audioDurationMs;
+                PlaybackStartTime = DateTime.Now;
+                PlaybackProgress = 0;
+                PlaybackPositionMs = 0;
+                IsPlaybackComplete = false;
+                LastHeartbeatTime = DateTime.Now;
+                
+                // 计算预计结束时间
+                if (audioDurationMs > 0)
+                {
+                    EstimatedPlaybackEndTime = DateTime.Now.AddMilliseconds(audioDurationMs);
+                }
+                else
+                {
+                    EstimatedPlaybackEndTime = DateTime.MinValue;
+                }
+                
+                IsPlaying = true;
+
+                OnPlaybackStarted(new TTSPlaybackEventArgs(audioPath, text));
+            }
+            else
+            {
+                PlaybackProgress = 1;
+                IsPlaybackComplete = true;
+                LastHeartbeatTime = DateTime.Now;
+                IsPlaying = false;
+
+                OnPlaybackCompleted(new TTSPlaybackEventArgs(audioPath, text));
+            }
+        }
+
+        /// <summary>
+        /// 更新播放进度（供播放器调用）
+        /// </summary>
+        public void UpdatePlaybackProgress(long positionMs, long durationMs = -1)
+        {
+            PlaybackPositionMs = positionMs;
+            LastHeartbeatTime = DateTime.Now;
+            
+            if (durationMs > 0)
+            {
+                AudioDurationMs = durationMs;
+                PlaybackProgress = (double)positionMs / durationMs;
+                
+                // 更新预计结束时间
+                var remainingMs = durationMs - positionMs;
+                if (remainingMs > 0)
+                {
+                    EstimatedPlaybackEndTime = DateTime.Now.AddMilliseconds(remainingMs);
+                }
+            }
+            else if (AudioDurationMs > 0)
+            {
+                PlaybackProgress = (double)positionMs / AudioDurationMs;
+            }
+        }
+
+        /// <summary>
+        /// 更新心跳时间（表示播放器仍在正常运行）
+        /// </summary>
+        public void UpdateHeartbeat()
+        {
+            LastHeartbeatTime = DateTime.Now;
         }
 
         /// <summary>

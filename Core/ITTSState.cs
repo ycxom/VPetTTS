@@ -50,6 +50,50 @@ namespace Vpet.Plugin.CustomTTS.Core
 
         #endregion
 
+        #region 播放进度属性（供 VPetLLM 读取）
+
+        /// <summary>
+        /// 当前播放的音频文件路径
+        /// </summary>
+        string CurrentAudioPath { get; }
+
+        /// <summary>
+        /// 当前播放进度 (0.0 - 1.0)
+        /// </summary>
+        double PlaybackProgress { get; }
+
+        /// <summary>
+        /// 当前播放位置（毫秒）
+        /// </summary>
+        long PlaybackPositionMs { get; }
+
+        /// <summary>
+        /// 音频总时长（毫秒），-1 表示未知
+        /// </summary>
+        long AudioDurationMs { get; }
+
+        /// <summary>
+        /// 播放开始时间
+        /// </summary>
+        DateTime PlaybackStartTime { get; }
+
+        /// <summary>
+        /// 预计播放结束时间（基于音频时长计算）
+        /// </summary>
+        DateTime EstimatedPlaybackEndTime { get; }
+
+        /// <summary>
+        /// 播放是否已完成（用于 VPetLLM 判断是否可以发送下一个请求）
+        /// </summary>
+        bool IsPlaybackComplete { get; }
+
+        /// <summary>
+        /// 最后一次心跳时间（用于检测播放器是否正常运行）
+        /// </summary>
+        DateTime LastHeartbeatTime { get; }
+
+        #endregion
+
         #region 错误状态属性
 
         /// <summary>

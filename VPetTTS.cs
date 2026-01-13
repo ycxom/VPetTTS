@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -1093,6 +1094,7 @@ namespace Vpet.Plugin.CustomTTS
 
         /// <summary>
         /// 播放音频文件（自动选择播放器）
+        /// 修复：确保播放状态正确释放，可被VPetLLM读取
         /// </summary>
         private async Task PlayAudioAsync(string path)
         {
@@ -1121,67 +1123,98 @@ namespace Vpet.Plugin.CustomTTS
             var playbackAttempts = 0;
             const int maxAttempts = 2; // 最多尝试两种播放器
 
-            while (playbackAttempts < maxAttempts)
+            // 获取音频时长（如果可能）
+            long audioDurationMs = -1;
+            try
             {
-                playbackAttempts++;
-                
-                try
+                audioDurationMs = GetAudioDurationMs(normalizedPath);
+                if (audioDurationMs > 0)
                 {
-                    LogMessage($"尝试播放音频 (第 {playbackAttempts} 次): {Path.GetFileName(normalizedPath)} 使用 {_currentPlayerType} 播放器");
-
-                    if (_currentPlayerType == PlayerType.MpvPlayer && _mpvPlayer != null)
-                    {
-                        // 使用 mpv 播放器（高码率支持）
-                        await PlayWithMpvAsync(normalizedPath);
-                        LogMessage($"✓ mpv 播放器播放成功");
-                        return;
-                    }
-                    else if (_currentPlayerType == PlayerType.VPetBuiltIn)
-                    {
-                        // 使用 VPet 内置播放器
-                        await PlayWithVPetBuiltInAsync(normalizedPath);
-                        LogMessage($"✓ VPet 内置播放器播放成功");
-                        return;
-                    }
-                    else
-                    {
-                        throw new InvalidOperationException($"无效的播放器类型: {_currentPlayerType}");
-                    }
+                    LogMessage($"音频时长: {audioDurationMs}ms ({audioDurationMs / 1000.0:F1}秒)");
                 }
-                catch (Exception ex)
-                {
-                    var error = $"播放器 {_currentPlayerType} 播放失败: {ex.Message}";
-                    LogMessage($"✗ {error}");
-                    
-                    // 使用错误处理器记录详细错误
-                    _errorHandler.HandlePlayerError(_currentPlayerType, ex, "音频播放", normalizedPath);
-                    UpdatePlayerError(error);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"获取音频时长失败: {ex.Message}");
+            }
 
-                    // 如果是第一次尝试且使用的是 mpv，尝试切换到内置播放器
-                    if (playbackAttempts == 1 && _currentPlayerType == PlayerType.MpvPlayer)
+            // 设置播放状态为true（开始播放），包含音频时长信息
+            _stateManager?.SetPlayingState(true, normalizedPath, "", audioDurationMs);
+            UpdatePlayingState(true);
+
+            try
+            {
+                while (playbackAttempts < maxAttempts)
+                {
+                    playbackAttempts++;
+                    
+                    try
                     {
-                        // 检查是否应该切换播放器
-                        if (_errorHandler.ShouldRetryWithDifferentPlayer(ex, _currentPlayerType))
+                        LogMessage($"尝试播放音频 (第 {playbackAttempts} 次): {Path.GetFileName(normalizedPath)} 使用 {_currentPlayerType} 播放器");
+
+                        if (_currentPlayerType == PlayerType.MpvPlayer && _mpvPlayer != null)
                         {
-                            LogMessage("错误处理器建议切换到 VPet 内置播放器重试...");
-                            await SwitchToFallbackPlayer($"mpv 播放失败: {ex.Message}");
-                            continue;
+                            // 使用 mpv 播放器（高码率支持）
+                            await PlayWithMpvAsync(normalizedPath);
+                            LogMessage($"✓ mpv 播放器播放成功");
+                            return; // 播放成功，状态将在finally块中释放
+                        }
+                        else if (_currentPlayerType == PlayerType.VPetBuiltIn)
+                        {
+                            // 使用 VPet 内置播放器
+                            await PlayWithVPetBuiltInAsync(normalizedPath);
+                            LogMessage($"✓ VPet 内置播放器播放成功");
+                            return; // 播放成功，状态将在finally块中释放
+                        }
+                        else
+                        {
+                            throw new InvalidOperationException($"无效的播放器类型: {_currentPlayerType}");
                         }
                     }
-                    
-                    // 如果所有播放器都失败了
-                    LogMessage($"所有播放器都无法播放音频文件: {normalizedPath}");
-                    LogMessage($"最后一个错误: {ex.Message}");
-                    
-                    // 记录到状态管理器
-                    _stateManager?.SetError($"音频播放失败: {ex.Message}", ex, TTSOperationStage.Playing);
-                    break;
+                    catch (Exception ex)
+                    {
+                        var error = $"播放器 {_currentPlayerType} 播放失败: {ex.Message}";
+                        LogMessage($"✗ {error}");
+                        
+                        // 使用错误处理器记录详细错误
+                        _errorHandler.HandlePlayerError(_currentPlayerType, ex, "音频播放", normalizedPath);
+                        UpdatePlayerError(error);
+
+                        // 如果是第一次尝试且使用的是 mpv，尝试切换到内置播放器
+                        if (playbackAttempts == 1 && _currentPlayerType == PlayerType.MpvPlayer)
+                        {
+                            // 检查是否应该切换播放器
+                            if (_errorHandler.ShouldRetryWithDifferentPlayer(ex, _currentPlayerType))
+                            {
+                                LogMessage("错误处理器建议切换到 VPet 内置播放器重试...");
+                                await SwitchToFallbackPlayer($"mpv 播放失败: {ex.Message}");
+                                continue;
+                            }
+                        }
+                        
+                        // 如果所有播放器都失败了
+                        LogMessage($"所有播放器都无法播放音频文件: {normalizedPath}");
+                        LogMessage($"最后一个错误: {ex.Message}");
+                        
+                        // 记录到状态管理器
+                        _stateManager?.SetError($"音频播放失败: {ex.Message}", ex, TTSOperationStage.Playing);
+                        break;
+                    }
                 }
+            }
+            finally
+            {
+                // 确保播放状态被释放（无论成功还是失败）
+                _stateManager?.SetPlayingState(false, normalizedPath, "");
+                UpdatePlayingState(false);
+                LogMessage($"播放状态已释放: {Path.GetFileName(normalizedPath)}");
             }
         }
 
         /// <summary>
         /// 使用 mpv 播放器播放音频
+        /// 优化：移除多余的等待逻辑，PlayAsync 已经等待播放完成
+        /// 新增：播放期间定期更新心跳，供 VPetLLM 监控播放状态
         /// </summary>
         private async Task PlayWithMpvAsync(string path)
         {
@@ -1189,6 +1222,9 @@ namespace Vpet.Plugin.CustomTTS
             {
                 throw new InvalidOperationException("mpv 播放器未初始化");
             }
+
+            CancellationTokenSource heartbeatCts = null;
+            Task heartbeatTask = null;
 
             try
             {
@@ -1200,7 +1236,17 @@ namespace Vpet.Plugin.CustomTTS
                 }
 
                 LogMessage($"mpv 播放器状态: {processStatus}");
+                
+                // 启动心跳更新任务（每500ms更新一次心跳）
+                heartbeatCts = new CancellationTokenSource();
+                heartbeatTask = StartHeartbeatUpdateAsync(heartbeatCts.Token);
+                
+                // 启动播放并等待完成（PlayAsync 内部已经等待进程退出）
                 await _mpvPlayer.PlayAsync(path);
+                
+                // 注意：不再需要额外的 WaitForMpvPlaybackCompleteAsync()
+                // 因为 PlayAsync 内部已经调用了 await _process.WaitForExitAsync()
+                LogMessage($"mpv 播放完成: {Path.GetFileName(path)}");
             }
             catch (FileNotFoundException ex)
             {
@@ -1241,10 +1287,57 @@ namespace Vpet.Plugin.CustomTTS
                 
                 throw; // 重新抛出原始异常
             }
+            finally
+            {
+                // 停止心跳更新任务
+                if (heartbeatCts != null)
+                {
+                    try
+                    {
+                        heartbeatCts.Cancel();
+                        if (heartbeatTask != null)
+                        {
+                            await Task.WhenAny(heartbeatTask, Task.Delay(1000)); // 最多等待1秒
+                        }
+                    }
+                    catch { }
+                    finally
+                    {
+                        heartbeatCts.Dispose();
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 启动心跳更新任务（在播放期间定期更新心跳）
+        /// </summary>
+        private async Task StartHeartbeatUpdateAsync(CancellationToken cancellationToken)
+        {
+            try
+            {
+                while (!cancellationToken.IsCancellationRequested)
+                {
+                    // 更新心跳
+                    _stateManager?.UpdateHeartbeat();
+                    
+                    // 等待500ms
+                    await Task.Delay(500, cancellationToken);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+                // 正常取消，不需要处理
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"心跳更新任务异常: {ex.Message}");
+            }
         }
 
         /// <summary>
         /// 使用 VPet 内置播放器播放音频
+        /// 修复：等待播放完成后再返回
         /// </summary>
         private async Task PlayWithVPetBuiltInAsync(string path)
         {
@@ -1288,8 +1381,8 @@ namespace Vpet.Plugin.CustomTTS
                     }
                 });
 
-                // 给播放器一些时间开始播放
-                await Task.Delay(100);
+                // 等待VPet内置播放器播放完成
+                await WaitForVPetBuiltInPlaybackCompleteAsync();
             }
             catch (ArgumentException)
             {
@@ -1304,6 +1397,50 @@ namespace Vpet.Plugin.CustomTTS
             catch (Exception ex)
             {
                 throw new InvalidOperationException($"VPet 内置播放器播放失败: {ex.Message}", ex);
+            }
+        }
+
+        /// <summary>
+        /// 等待VPet内置播放器播放完成
+        /// </summary>
+        private async Task WaitForVPetBuiltInPlaybackCompleteAsync()
+        {
+            try
+            {
+                if (MW?.Main == null) return;
+
+                int maxWaitTime = 60000; // 最多等待60秒
+                int checkInterval = 200;  // 每200ms检查一次
+                int elapsedTime = 0;
+
+                LogMessage("开始等待VPet内置播放器播放完成...");
+
+                // 给播放器一些时间开始播放
+                await Task.Delay(500);
+
+                // 等待播放完成
+                while (MW.Main.PlayingVoice && elapsedTime < maxWaitTime)
+                {
+                    await Task.Delay(checkInterval);
+                    elapsedTime += checkInterval;
+                }
+
+                if (elapsedTime >= maxWaitTime)
+                {
+                    LogMessage("警告: VPet内置播放器播放等待超时");
+                }
+                else if (elapsedTime > 0)
+                {
+                    LogMessage($"VPet内置播放器播放完成，等待时间: {elapsedTime}ms");
+                }
+                else
+                {
+                    LogMessage("VPet内置播放器播放完成（无等待时间）");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"等待VPet内置播放器播放完成时发生错误: {ex.Message}");
             }
         }
 
@@ -1474,6 +1611,7 @@ namespace Vpet.Plugin.CustomTTS
 
         /// <summary>
         /// 处理说话事件
+        /// 修复：避免状态管理冲突，确保状态正确释放
         /// </summary>
         public async void Main_OnSay(VPet_Simulator.Core.SayInfo sayInfo)
         {
@@ -1512,11 +1650,8 @@ namespace Vpet.Plugin.CustomTTS
                         // 更新状态：处理完成（使用缓存）
                         _stateManager.SetProcessingState(false);
                         
-                        // 更新状态：开始播放
-                        _stateManager.SetPlayingState(true, cachedPath, saythings);
+                        // 播放音频（PlayAudioAsync内部会管理播放状态）
                         await PlayAudioAsync(cachedPath);
-                        // 更新状态：播放完成
-                        _stateManager.SetPlayingState(false, cachedPath, saythings);
                         return;
                     }
                 }
@@ -1549,14 +1684,8 @@ namespace Vpet.Plugin.CustomTTS
                     // 更新状态：处理完成
                     _stateManager.SetProcessingState(false);
 
-                    // 更新状态：开始播放
-                    _stateManager.SetPlayingState(true, path, saythings);
-                    
-                    // 播放音频
+                    // 播放音频（PlayAudioAsync内部会管理播放状态）
                     await PlayAudioAsync(path);
-                    
-                    // 更新状态：播放完成
-                    _stateManager.SetPlayingState(false, path, saythings);
 
                     // 如果不使用缓存，延迟删除临时文件
                     if (!Set.EnableCache)
@@ -1714,6 +1843,144 @@ namespace Vpet.Plugin.CustomTTS
                 LogMessage($"打开调试窗口失败: {ex.Message}");
                 throw;
             }
+        }
+
+        /// <summary>
+        /// 获取音频文件时长（毫秒）
+        /// </summary>
+        /// <param name="audioPath">音频文件路径</param>
+        /// <returns>音频时长（毫秒），-1 表示无法获取</returns>
+        private long GetAudioDurationMs(string audioPath)
+        {
+            try
+            {
+                if (string.IsNullOrEmpty(audioPath) || !File.Exists(audioPath))
+                {
+                    return -1;
+                }
+
+                var extension = Path.GetExtension(audioPath).ToLowerInvariant();
+                
+                // 对于 MP3 文件，尝试从文件头读取时长
+                if (extension == ".mp3")
+                {
+                    return GetMp3DurationMs(audioPath);
+                }
+                
+                // 对于其他格式，根据文件大小和比特率估算
+                // 假设平均比特率为 128kbps
+                var fileInfo = new FileInfo(audioPath);
+                var fileSizeBytes = fileInfo.Length;
+                var estimatedDurationMs = (long)(fileSizeBytes * 8.0 / 128.0); // 128kbps
+                
+                return estimatedDurationMs;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"获取音频时长失败: {ex.Message}");
+                return -1;
+            }
+        }
+
+        /// <summary>
+        /// 获取 MP3 文件时长（毫秒）
+        /// 通过读取 MP3 帧头信息计算
+        /// </summary>
+        private long GetMp3DurationMs(string mp3Path)
+        {
+            try
+            {
+                using (var fs = new FileStream(mp3Path, FileMode.Open, FileAccess.Read, FileShare.Read))
+                {
+                    // 跳过 ID3v2 标签（如果存在）
+                    var header = new byte[10];
+                    if (fs.Read(header, 0, 10) == 10)
+                    {
+                        if (header[0] == 'I' && header[1] == 'D' && header[2] == '3')
+                        {
+                            // ID3v2 标签存在，计算标签大小
+                            var tagSize = ((header[6] & 0x7F) << 21) |
+                                         ((header[7] & 0x7F) << 14) |
+                                         ((header[8] & 0x7F) << 7) |
+                                         (header[9] & 0x7F);
+                            fs.Seek(tagSize, SeekOrigin.Current);
+                        }
+                        else
+                        {
+                            fs.Seek(0, SeekOrigin.Begin);
+                        }
+                    }
+
+                    // 查找第一个有效的 MP3 帧
+                    var frameHeader = new byte[4];
+                    while (fs.Position < fs.Length - 4)
+                    {
+                        if (fs.Read(frameHeader, 0, 4) != 4)
+                            break;
+
+                        // 检查帧同步字 (0xFF 0xFB, 0xFF 0xFA, 0xFF 0xF3, 0xFF 0xF2)
+                        if (frameHeader[0] == 0xFF && (frameHeader[1] & 0xE0) == 0xE0)
+                        {
+                            // 解析帧头
+                            var version = (frameHeader[1] >> 3) & 0x03;
+                            var layer = (frameHeader[1] >> 1) & 0x03;
+                            var bitrateIndex = (frameHeader[2] >> 4) & 0x0F;
+                            var sampleRateIndex = (frameHeader[2] >> 2) & 0x03;
+
+                            // 获取比特率（kbps）
+                            var bitrate = GetMp3Bitrate(version, layer, bitrateIndex);
+                            if (bitrate > 0)
+                            {
+                                // 计算音频数据大小（排除标签）
+                                var audioDataSize = fs.Length - fs.Position + 4;
+                                // 计算时长：(文件大小 * 8) / 比特率
+                                var durationMs = (long)(audioDataSize * 8.0 / bitrate);
+                                return durationMs;
+                            }
+                        }
+
+                        // 回退一个字节继续搜索
+                        fs.Seek(-3, SeekOrigin.Current);
+                    }
+                }
+
+                // 如果无法解析，使用文件大小估算（假设 128kbps）
+                var fileInfo = new FileInfo(mp3Path);
+                return (long)(fileInfo.Length * 8.0 / 128.0);
+            }
+            catch
+            {
+                // 出错时使用文件大小估算
+                var fileInfo = new FileInfo(mp3Path);
+                return (long)(fileInfo.Length * 8.0 / 128.0);
+            }
+        }
+
+        /// <summary>
+        /// 获取 MP3 比特率（kbps）
+        /// </summary>
+        private int GetMp3Bitrate(int version, int layer, int bitrateIndex)
+        {
+            // MPEG 1 Layer 3 比特率表
+            int[] bitratesV1L3 = { 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0 };
+            // MPEG 2/2.5 Layer 3 比特率表
+            int[] bitratesV2L3 = { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0 };
+
+            if (bitrateIndex < 0 || bitrateIndex > 15)
+                return 0;
+
+            if (version == 3) // MPEG 1
+            {
+                if (layer == 1) // Layer 3
+                    return bitratesV1L3[bitrateIndex];
+            }
+            else // MPEG 2 or 2.5
+            {
+                if (layer == 1) // Layer 3
+                    return bitratesV2L3[bitrateIndex];
+            }
+
+            return 128; // 默认值
         }
     }
 }

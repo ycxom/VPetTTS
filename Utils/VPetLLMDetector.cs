@@ -88,7 +88,8 @@ namespace Vpet.Plugin.CustomTTS.Utils
             // 使用缓存避免频繁检测
             if (!forceRefresh && _cachedResult != null && DateTime.Now - _lastDetectionTime < CacheDuration)
             {
-                LogMessage($"使用缓存的检测结果 (缓存时间: {_lastDetectionTime:HH:mm:ss})");
+                // 不让日志和瀑布一样
+                // LogMessage($"使用缓存的检测结果 (缓存时间: {_lastDetectionTime:HH:mm:ss})");
                 return _cachedResult;
             }
 
