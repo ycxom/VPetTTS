@@ -1,6 +1,4 @@
-using System;
 using System.Net.Http;
-using System.Threading.Tasks;
 using System.Web;
 
 namespace Vpet.Plugin.CustomTTS.Core.Providers
@@ -20,7 +18,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
         {
             try
             {
-                if (Settings?.URL == null || string.IsNullOrWhiteSpace(Settings.URL.BaseUrl))
+                if (Settings?.URL is null || string.IsNullOrWhiteSpace(Settings.URL.BaseUrl))
                 {
                     OnAudioGenerationError("URL TTS BaseUrl 未配置");
                     return Array.Empty<byte>();
@@ -50,7 +48,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
                         url += "?";
                     else
                         url += "&";
-                    
+
                     url += $"text={encodedText}&voice={Settings.URL.Voice}";
                     response = await client.GetAsync(url);
                 }

@@ -354,3 +354,7 @@ MigrationBackup/
 .vscode
 .kiro
 .ide
+
+*.md
+!README.md
+!docs/

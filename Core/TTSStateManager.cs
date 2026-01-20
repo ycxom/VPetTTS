@@ -1,10 +1,3 @@
-using System;
-using System.IO;
-using System.Threading;
-using LinePutScript;
-using LinePutScript.Converter;
-using VPet_Simulator.Core;
-
 namespace Vpet.Plugin.CustomTTS.Core
 {
     /// <summary>
@@ -64,10 +57,10 @@ namespace Vpet.Plugin.CustomTTS.Core
         public TTSStateManager(Setting settings)
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
-            
+
             // 设置持久化文件路径
             _stateFilePath = Path.Combine(GraphCore.CachePath, "tts_state.lps");
-            
+
             // 加载持久化状态
             LoadState();
         }
@@ -445,7 +438,7 @@ namespace Vpet.Plugin.CustomTTS.Core
             {
                 // 开始处理时清除之前的错误状态
                 ClearError();
-                
+
                 _currentOperationStartTime = DateTime.Now;
                 CurrentText = text;
                 CurrentProvider = provider ?? _settings?.Provider ?? "";
@@ -457,7 +450,7 @@ namespace Vpet.Plugin.CustomTTS.Core
             else
             {
                 var duration = DateTime.Now - _currentOperationStartTime;
-                
+
                 lock (_lockObject)
                 {
                     _totalProcessed++;
@@ -475,7 +468,7 @@ namespace Vpet.Plugin.CustomTTS.Core
 
                 // 重置当前信息
                 CurrentText = "";
-                
+
                 // 保存状态（每次处理完成后）
                 SaveState();
             }
@@ -552,7 +545,7 @@ namespace Vpet.Plugin.CustomTTS.Core
                 PlaybackPositionMs = 0;
                 IsPlaybackComplete = false;
                 LastHeartbeatTime = DateTime.Now;
-                
+
                 // 计算预计结束时间
                 if (audioDurationMs > 0)
                 {
@@ -562,7 +555,7 @@ namespace Vpet.Plugin.CustomTTS.Core
                 {
                     EstimatedPlaybackEndTime = DateTime.MinValue;
                 }
-                
+
                 IsPlaying = true;
 
                 OnPlaybackStarted(new TTSPlaybackEventArgs(audioPath, text));
@@ -585,12 +578,12 @@ namespace Vpet.Plugin.CustomTTS.Core
         {
             PlaybackPositionMs = positionMs;
             LastHeartbeatTime = DateTime.Now;
-            
+
             if (durationMs > 0)
             {
                 AudioDurationMs = durationMs;
                 PlaybackProgress = (double)positionMs / durationMs;
-                
+
                 // 更新预计结束时间
                 var remainingMs = durationMs - positionMs;
                 if (remainingMs > 0)
@@ -637,7 +630,7 @@ namespace Vpet.Plugin.CustomTTS.Core
             });
 
             OnStateChanged(nameof(HasError), false, true);
-            
+
             // 保存状态
             SaveState();
         }
@@ -812,7 +805,7 @@ namespace Vpet.Plugin.CustomTTS.Core
 
                 var lps = LPSConvert.SerializeObject(stateData, "TTSState");
                 File.WriteAllText(_stateFilePath, lps.ToString());
-                
+
                 LogMessage("状态已保存到文件");
             }
             catch (Exception ex)
@@ -838,23 +831,23 @@ namespace Vpet.Plugin.CustomTTS.Core
                 var lps = new LpsDocument(content);
                 var stateData = LPSConvert.DeserializeObject<TTSStateData>(lps["TTSState"]);
 
-                if (stateData != null)
+                if (stateData is not null)
                 {
                     stateData.Validate();
-                    
+
                     lock (_lockObject)
                     {
                         _totalProcessed = stateData.TotalProcessed;
                         _totalProcessingTimeMs = stateData.TotalProcessingTimeMs;
                         _totalErrors = stateData.TotalErrors;
-                        
+
                         // 如果上次关闭时正在处理，记录警告
                         if (stateData.WasProcessingOnShutdown)
                         {
                             LogMessage("警告：上次关闭时 TTS 正在处理中");
                         }
                     }
-                    
+
                     LogMessage($"状态已从文件加载 (总处理: {_totalProcessed}, 总时间: {_totalProcessingTimeMs}ms)");
                 }
             }
@@ -883,7 +876,7 @@ namespace Vpet.Plugin.CustomTTS.Core
                 _totalProcessingTimeMs = 0;
                 _totalErrors = 0;
             }
-            
+
             SaveState();
             LogMessage("统计信息已重置");
         }

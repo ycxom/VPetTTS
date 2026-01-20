@@ -1,7 +1,4 @@
-using System;
 using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
@@ -20,7 +17,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
         {
             try
             {
-                if (Settings?.DIY == null || string.IsNullOrWhiteSpace(Settings.DIY.BaseUrl))
+                if (Settings?.DIY is null || string.IsNullOrWhiteSpace(Settings.DIY.BaseUrl))
                 {
                     OnAudioGenerationError("DIY TTS BaseUrl 未配置");
                     return Array.Empty<byte>();
@@ -31,7 +28,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
                 using var client = CreateHttpClient();
 
                 // 添加自定义头
-                if (Settings.DIY.CustomHeaders != null)
+                if (Settings.DIY.CustomHeaders is not null)
                 {
                     foreach (var header in Settings.DIY.CustomHeaders)
                     {
@@ -59,7 +56,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
                         url += "?";
                     else
                         url += "&";
-                    
+
                     url += $"text={Uri.EscapeDataString(text)}";
                     response = await client.GetAsync(url);
                 }

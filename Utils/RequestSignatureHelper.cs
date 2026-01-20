@@ -1,7 +1,4 @@
-using System;
 using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Vpet.Plugin.CustomTTS.Utils
 {
@@ -19,7 +16,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             _0x1f = p0; _0x2e = p1; _0x3d = p2;
         }
 
-        internal static bool IsInitialized => _0x1f != null;
+        internal static bool IsInitialized => _0x1f is not null;
 
         internal static async Task AddSignatureAsync(System.Net.Http.HttpRequestMessage r)
         {
@@ -28,7 +25,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var t = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 var v0 = _0x1f?.Invoke() ?? 0;
                 var v1 = 0;
-                if (_0x2e != null) { try { v1 = await _0x2e(); } catch { } }
+                if (_0x2e is not null) { try { v1 = await _0x2e(); } catch { } }
                 var v2 = _0x4c();
 
                 r.Headers.Add(_0x5a(), _0x6b(v0.ToString(), t));
@@ -41,7 +38,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
         private static string _0x4c()
         {
-            if (_0x3d != null)
+            if (_0x3d is not null)
             {
                 try
                 {

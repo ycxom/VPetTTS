@@ -1,8 +1,5 @@
-using System;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
+using System.Net.Http;
 
 namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
@@ -21,7 +18,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
         {
             try
             {
-                if (Settings?.OpenAI == null || string.IsNullOrWhiteSpace(Settings.OpenAI.ApiKey))
+                if (Settings?.OpenAI is null || string.IsNullOrWhiteSpace(Settings.OpenAI.ApiKey))
                 {
                     OnAudioGenerationError("OpenAI API Key 未配置");
                     return Array.Empty<byte>();

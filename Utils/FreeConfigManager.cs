@@ -1,10 +1,6 @@
-using System;
-using System.IO;
+using Newtonsoft.Json.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
-using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 
 namespace Vpet.Plugin.CustomTTS.Utils
 {
@@ -16,7 +12,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         private const string CONFIG_BASE_URL = "https://vpetllm.ycxom.com/api";
         private const string VERSION_FILE = "vpetllm.json";
         private static readonly string ConfigDirectory;
-        
+
         // 配置文件名称
         private const string TTS_CONFIG_NAME = "Free_TTS_Config.json";
 
@@ -25,7 +21,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             // 配置目录：文档\VPetLLM\FreeConfig\
             var documentsPath = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
             ConfigDirectory = Path.Combine(documentsPath, "VPetLLM", "FreeConfig");
-            
+
             // 确保目录存在
             if (!Directory.Exists(ConfigDirectory))
             {
@@ -41,10 +37,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
             try
             {
                 Console.WriteLine("FreeConfigManager: 开始初始化TTS配置...");
-                
+
                 // 下载版本信息
                 var versionInfo = await DownloadVersionInfoAsync();
-                if (versionInfo == null)
+                if (versionInfo is null)
                 {
                     Console.WriteLine("FreeConfigManager: 无法获取版本信息，使用本地配置");
                     return File.Exists(GetConfigPath(TTS_CONFIG_NAME));
@@ -128,10 +124,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 File.WriteAllText(encryptedPath, encryptedContent);
 
                 Console.WriteLine($"FreeConfigManager: 配置更新成功，已保存为: {expectedMd5}");
-                
+
                 // 清理旧的TTS加密文件
                 CleanOldEncryptedFiles(expectedMd5, "TTS");
-                
+
                 return true;
             }
             catch (Exception ex)
@@ -169,12 +165,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
             var key = "VPetLLM_Free_Config_Key_2024";
             var contentBytes = Encoding.UTF8.GetBytes(content);
             var keyBytes = Encoding.UTF8.GetBytes(key);
-            
+
             for (int i = 0; i < contentBytes.Length; i++)
             {
                 contentBytes[i] ^= keyBytes[i % keyBytes.Length];
             }
-            
+
             return Convert.ToBase64String(contentBytes);
         }
 
@@ -188,12 +184,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var key = "VPetLLM_Free_Config_Key_2024";
                 var contentBytes = Convert.FromBase64String(encryptedContent);
                 var keyBytes = Encoding.UTF8.GetBytes(key);
-                
+
                 for (int i = 0; i < contentBytes.Length; i++)
                 {
                     contentBytes[i] ^= keyBytes[i % keyBytes.Length];
                 }
-                
+
                 return Encoding.UTF8.GetString(contentBytes);
             }
             catch (Exception ex)
@@ -236,7 +232,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                             {
                                 var json = JObject.Parse(decryptedContent);
                                 var model = json["Model"]?.ToString();
-                                
+
                                 // 根据Model判断配置类型，只删除同类型的旧配置
                                 if (configType == "TTS" && model == "vpetllm")
                                 {
@@ -286,7 +282,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 // 读取并解密
                 var encryptedContent = File.ReadAllText(encryptedFile);
                 var decryptedContent = DecryptConfig(encryptedContent);
-                
+
                 if (string.IsNullOrEmpty(decryptedContent))
                 {
                     Console.WriteLine($"FreeConfigManager: 解密配置 {configName} 失败");
@@ -311,7 +307,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 // 获取配置名称（不含.json）
                 var configKey = configName.Replace(".json", "");
-                
+
                 // 遍历目录中的所有32位MD5文件
                 var files = Directory.GetFiles(ConfigDirectory);
                 foreach (var file in files)
@@ -329,7 +325,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                             {
                                 var json = JObject.Parse(decryptedContent);
                                 // 检查是否包含预期的字段来判断配置类型
-                                if (json["API_KEY"] != null && json["API_URL"] != null && json["Model"] != null)
+                                if (json["API_KEY"] is not null && json["API_URL"] is not null && json["Model"] is not null)
                                 {
                                     // 通过Model字段判断配置类型
                                     var model = json["Model"]?.ToString();
@@ -346,7 +342,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                         }
                     }
                 }
-                
+
                 return null;
             }
             catch (Exception ex)

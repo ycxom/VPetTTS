@@ -1,7 +1,5 @@
-using System;
 using System.Net;
 using System.Net.Http;
-using System.Threading.Tasks;
 
 namespace Vpet.Plugin.CustomTTS.Core
 {
@@ -12,7 +10,7 @@ namespace Vpet.Plugin.CustomTTS.Core
     {
         public abstract string Name { get; }
         protected Setting? Settings { get; }
-        
+
         public event EventHandler<byte[]>? AudioGenerated;
         public event EventHandler<string>? AudioGenerationError;
 
@@ -54,7 +52,7 @@ namespace Vpet.Plugin.CustomTTS.Core
         /// </summary>
         protected IWebProxy? GetProxy()
         {
-            if (Settings?.Proxy == null || !Settings.Proxy.IsEnabled)
+            if (Settings?.Proxy is null || !Settings.Proxy.IsEnabled)
             {
                 LogMessage($"TTS ({Name}): 代理未启用");
                 return null;
@@ -106,7 +104,7 @@ namespace Vpet.Plugin.CustomTTS.Core
             var handler = new HttpClientHandler();
             var proxy = GetProxy();
 
-            if (proxy != null)
+            if (proxy is not null)
             {
                 handler.Proxy = proxy;
                 handler.UseProxy = true;

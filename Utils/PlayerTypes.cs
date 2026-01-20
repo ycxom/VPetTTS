@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Text;
-
 namespace Vpet.Plugin.CustomTTS.Utils
 {
     /// <summary>
@@ -42,19 +38,19 @@ namespace Vpet.Plugin.CustomTTS.Utils
         public PlayerType CurrentPlayerType { get; set; }
         public bool IsPlayerAvailable { get; set; }
         public string PlayerStatusSummary { get; set; } = "";
-        
+
         // VPetLLM 相关信息
         public bool VPetLLMPluginExists { get; set; }
         public bool MpvPlayerAvailable { get; set; }
         public string MpvExePath { get; set; } = "";
         public string MpvVersion { get; set; } = "";
         public long MpvFileSize { get; set; }
-        
+
         // 播放器状态
         public bool IsPlaying { get; set; }
         public string LastError { get; set; } = "";
         public DateTime LastErrorTime { get; set; }
-        
+
         // 错误统计
         public int TotalErrors { get; set; }
         public int RecentErrorCount { get; set; }
@@ -69,20 +65,20 @@ namespace Vpet.Plugin.CustomTTS.Utils
         public bool OverallPassed { get; set; }
         public DateTime TestStartTime { get; set; }
         public TimeSpan TestDuration { get; set; }
-        
+
         // 各项测试结果
         public bool PlayerDetectionPassed { get; set; }
         public bool PathProcessingPassed { get; set; }
         public bool ErrorHandlingPassed { get; set; }
         public bool StateManagementPassed { get; set; }
         public bool PlayerSwitchingPassed { get; set; }
-        
+
         // 检测到的播放器类型
         public PlayerType DetectedPlayerType { get; set; }
-        
+
         // 测试错误列表
         public List<string> TestErrors { get; set; } = new List<string>();
-        
+
         /// <summary>
         /// 获取测试结果摘要
         /// </summary>
@@ -100,7 +96,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             summary.AppendLine($"  错误处理: {(ErrorHandlingPassed ? "✓" : "✗")}");
             summary.AppendLine($"  状态管理: {(StateManagementPassed ? "✓" : "✗")}");
             summary.AppendLine($"  播放器切换: {(PlayerSwitchingPassed ? "✓" : "✗")}");
-            
+
             if (TestErrors.Count > 0)
             {
                 summary.AppendLine();
@@ -110,7 +106,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     summary.AppendLine($"  - {error}");
                 }
             }
-            
+
             return summary.ToString();
         }
     }

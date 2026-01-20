@@ -1,6 +1,3 @@
-using System;
-using System.Threading.Tasks;
-
 namespace Vpet.Plugin.CustomTTS.Core
 {
     /// <summary>
@@ -82,12 +79,12 @@ namespace Vpet.Plugin.CustomTTS.Core
 
         public bool IsVPetTTSAvailable()
         {
-            return _ttsState != null && _ttsState.IsEnabled;
+            return _ttsState is not null && _ttsState.IsEnabled;
         }
 
         public bool CanAcceptNewRequests()
         {
-            return _ttsState != null && _ttsState.CanAcceptNewRequests;
+            return _ttsState is not null && _ttsState.CanAcceptNewRequests;
         }
 
         public ITTSState GetTTSState()

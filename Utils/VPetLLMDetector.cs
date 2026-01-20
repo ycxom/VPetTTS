@@ -1,10 +1,4 @@
-using System;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.IO;
-using System.Linq;
-using System.Reflection;
-using VPet_Simulator.Windows.Interface;
 
 namespace Vpet.Plugin.CustomTTS.Utils
 {
@@ -86,7 +80,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         public static VPetLLMDetectionResult DetectVPetLLM(IMainWindow mainWindow, bool forceRefresh = false)
         {
             // 使用缓存避免频繁检测
-            if (!forceRefresh && _cachedResult != null && DateTime.Now - _lastDetectionTime < CacheDuration)
+            if (!forceRefresh && _cachedResult is not null && DateTime.Now - _lastDetectionTime < CacheDuration)
             {
                 // 不让日志和瀑布一样
                 // LogMessage($"使用缓存的检测结果 (缓存时间: {_lastDetectionTime:HH:mm:ss})");
@@ -98,7 +92,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
             try
             {
-                if (mainWindow?.Plugins == null)
+                if (mainWindow?.Plugins is null)
                 {
                     var error = "主窗口或插件列表为空";
                     result.DetectionErrors.Add(error);
@@ -115,7 +109,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     {
                         var pluginName = plugin.PluginName;
                         LogMessage($"检查插件: {pluginName}");
-                        
+
                         if (string.Equals(pluginName, VPETLLM_PLUGIN_NAME, StringComparison.OrdinalIgnoreCase))
                         {
                             result.PluginExists = true;
@@ -145,17 +139,17 @@ namespace Vpet.Plugin.CustomTTS.Utils
                             if (File.Exists(mpvExePath))
                             {
                                 result.MpvExePath = mpvExePath;
-                                
+
                                 // 获取文件信息
                                 try
                                 {
                                     var fileInfo = new FileInfo(mpvExePath);
                                     result.MpvFileSize = fileInfo.Length;
-                                    
+
                                     // 尝试获取版本信息
                                     var versionInfo = FileVersionInfo.GetVersionInfo(mpvExePath);
                                     result.MpvVersion = versionInfo.FileVersion ?? "未知版本";
-                                    
+
                                     LogMessage($"✓ 找到 mpv 播放器: {mpvExePath}");
                                     LogMessage($"  文件大小: {result.MpvFileSize / 1024 / 1024:F1} MB");
                                     LogMessage($"  版本信息: {result.MpvVersion}");
@@ -172,7 +166,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                                 var error = $"mpv 播放器未找到: {mpvExePath}";
                                 result.DetectionErrors.Add(error);
                                 LogMessage($"✗ {error}");
-                                
+
                                 // 检查 mpv 目录是否存在
                                 if (!Directory.Exists(mpvDir))
                                 {
@@ -249,7 +243,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             try
             {
                 var result = DetectVPetLLM(mainWindow);
-                
+
                 if (result.CanUseMpvPlayer)
                 {
                     return $"mpv 播放器可用 (版本: {result.MpvVersion})";
@@ -294,7 +288,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
                 using (var process = Process.Start(startInfo))
                 {
-                    if (process != null)
+                    if (process is not null)
                     {
                         process.WaitForExit(5000); // 5秒超时
                         return process.ExitCode == 0;

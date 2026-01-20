@@ -1,8 +1,5 @@
-using System;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
+using System.Net.Http;
 
 namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
@@ -22,7 +19,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
         {
             try
             {
-                if (Settings?.GPTSoVITS == null || string.IsNullOrWhiteSpace(Settings.GPTSoVITS.BaseUrl))
+                if (Settings?.GPTSoVITS is null || string.IsNullOrWhiteSpace(Settings.GPTSoVITS.BaseUrl))
                 {
                     OnAudioGenerationError("GPT-SoVITS BaseUrl 未配置");
                     return Array.Empty<byte>();

@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Vpet.Plugin.CustomTTS.Core.Providers;
-
 namespace Vpet.Plugin.CustomTTS.Core
 {
     /// <summary>
@@ -50,7 +45,7 @@ namespace Vpet.Plugin.CustomTTS.Core
                     return null;
 
                 var provider = GetCurrentProvider();
-                if (provider == null)
+                if (provider is null)
                 {
                     LogMessage($"未找到TTS提供商: {_settings.Provider}");
                     return null;

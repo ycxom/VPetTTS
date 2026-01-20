@@ -1,8 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-
 namespace Vpet.Plugin.CustomTTS.Utils
 {
     /// <summary>
@@ -33,7 +28,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             lock (_lockObject)
             {
                 _errorHistory.Add(errorRecord);
-                
+
                 // 保持错误历史记录在限制范围内
                 if (_errorHistory.Count > _maxErrorHistory)
                 {
@@ -70,11 +65,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         public bool ShouldRetryWithDifferentPlayer(Exception exception, PlayerType currentPlayer)
         {
-            if (exception == null)
+            if (exception is null)
                 return false;
 
             var errorMessage = exception.Message.ToLowerInvariant();
-            
+
             // mpv 相关错误，应该切换到内置播放器
             if (currentPlayer == PlayerType.MpvPlayer)
             {
@@ -113,15 +108,15 @@ namespace Vpet.Plugin.CustomTTS.Utils
             lock (_lockObject)
             {
                 var stats = new PlayerErrorStatistics();
-                
+
                 foreach (var error in _errorHistory)
                 {
                     stats.TotalErrors++;
-                    
+
                     if (!stats.ErrorsByPlayer.ContainsKey(error.PlayerType))
                         stats.ErrorsByPlayer[error.PlayerType] = 0;
                     stats.ErrorsByPlayer[error.PlayerType]++;
-                    
+
                     if (!stats.ErrorsByType.ContainsKey(error.ExceptionType))
                         stats.ErrorsByType[error.ExceptionType] = 0;
                     stats.ErrorsByType[error.ExceptionType]++;
@@ -146,12 +141,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 var recentErrors = new List<PlayerErrorRecord>();
                 var startIndex = Math.Max(0, _errorHistory.Count - count);
-                
+
                 for (int i = startIndex; i < _errorHistory.Count; i++)
                 {
                     recentErrors.Add(_errorHistory[i]);
                 }
-                
+
                 return recentErrors;
             }
         }
@@ -181,18 +176,18 @@ namespace Vpet.Plugin.CustomTTS.Utils
             var stats = GetErrorStatistics();
             report.AppendLine("错误统计:");
             report.AppendLine($"  总错误数: {stats.TotalErrors}");
-            
+
             if (stats.TotalErrors > 0)
             {
                 report.AppendLine($"  首次错误: {stats.FirstErrorTime:yyyy-MM-dd HH:mm:ss}");
                 report.AppendLine($"  最近错误: {stats.LastErrorTime:yyyy-MM-dd HH:mm:ss}");
-                
+
                 report.AppendLine("  按播放器分类:");
                 foreach (var kvp in stats.ErrorsByPlayer)
                 {
                     report.AppendLine($"    {kvp.Key}: {kvp.Value} 次");
                 }
-                
+
                 report.AppendLine("  按错误类型分类:");
                 foreach (var kvp in stats.ErrorsByType)
                 {
@@ -202,7 +197,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
             report.AppendLine();
             report.AppendLine("最近错误详情:");
-            
+
             var recentErrors = GetRecentErrors(20);
             foreach (var error in recentErrors)
             {
@@ -230,17 +225,17 @@ namespace Vpet.Plugin.CustomTTS.Utils
             LogMessage($"  错误类型: {error.ExceptionType}");
             LogMessage($"  错误信息: {error.ErrorMessage}");
             LogMessage($"  上下文: {error.Context}");
-            
+
             if (!string.IsNullOrEmpty(error.AudioPath))
             {
                 LogMessage($"  音频文件: {Path.GetFileName(error.AudioPath)}");
             }
-            
+
             if (!string.IsNullOrEmpty(error.StackTrace))
             {
                 LogMessage($"  堆栈跟踪: {error.StackTrace.Split('\n')[0]}"); // 只显示第一行
             }
-            
+
             LogMessage($"  错误ID: {error.ErrorId}");
         }
 

@@ -1,6 +1,3 @@
-using System;
-using LinePutScript.Converter;
-
 namespace Vpet.Plugin.CustomTTS.Core
 {
     /// <summary>

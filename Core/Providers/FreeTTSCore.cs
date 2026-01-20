@@ -1,10 +1,6 @@
-using System;
-using System.Net.Http;
-using System.Text;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using Vpet.Plugin.CustomTTS.Utils;
+using System.Net.Http;
 
 namespace Vpet.Plugin.CustomTTS.Core.Providers
 {
@@ -40,7 +36,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
             try
             {
                 var config = FreeConfigManager.GetTTSConfig();
-                if (config != null)
+                if (config is not null)
                 {
                     _apiKey = DecodeString(config["API_KEY"]?.ToString() ?? "");
                     _apiUrl = DecodeString(config["API_URL"]?.ToString() ?? "");
@@ -91,19 +87,19 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
 
                 var startTime = DateTime.Now;
                 using var client = CreateHttpClient();
-                
+
                 // 创建请求并添加签名头
                 using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl)
                 {
                     Content = content
                 };
-                
+
                 // 添加加密认证头
                 if (RequestSignatureHelper.IsInitialized)
                 {
                     await RequestSignatureHelper.AddSignatureAsync(request);
                 }
-                
+
                 var response = await client.SendAsync(request);
                 var elapsed = (DateTime.Now - startTime).TotalSeconds;
 

@@ -1,10 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using LinePutScript.Converter;
-using LinePutScript.Localization.WPF;
 using Panuon.WPF.UI;
 
 namespace Vpet.Plugin.CustomTTS
@@ -21,7 +14,7 @@ namespace Vpet.Plugin.CustomTTS
             InitializeComponent();
             Resources = Application.Current.Resources;
             this.vts = vts;
-            
+
             LoadSettings();
             SetupEventHandlers();
         }
@@ -43,14 +36,14 @@ namespace Vpet.Plugin.CustomTTS
                     break;
                 }
             }
-            if (CombProvider.SelectedItem == null && CombProvider.Items.Count > 0)
+            if (CombProvider.SelectedItem is null && CombProvider.Items.Count > 0)
                 CombProvider.SelectedIndex = 0;
 
             // 代理设置
             EnableProxy.IsChecked = vts.Set.Proxy.IsEnabled;
             FollowSystemProxy.IsChecked = vts.Set.Proxy.FollowSystemProxy;
             ProxyAddress.Text = vts.Set.Proxy.Address;
-            
+
             foreach (ComboBoxItem item in ProxyProtocol.Items)
             {
                 if (item.Tag?.ToString() == vts.Set.Proxy.Protocol)
@@ -59,12 +52,12 @@ namespace Vpet.Plugin.CustomTTS
                     break;
                 }
             }
-            if (ProxyProtocol.SelectedItem == null && ProxyProtocol.Items.Count > 0)
+            if (ProxyProtocol.SelectedItem is null && ProxyProtocol.Items.Count > 0)
                 ProxyProtocol.SelectedIndex = 0;
 
             UpdateProviderConfig();
             UpdateSpeedText();
-            
+
             // 更新软禁用状态显示
             UpdateSoftDisableStatus();
         }
@@ -78,18 +71,18 @@ namespace Vpet.Plugin.CustomTTS
             {
                 // 实时重新检测其他 TTS 插件状态
                 vts.RefreshSoftDisableStatus();
-                
+
                 // 查找软禁用警告文本
                 var warningText = this.FindName("SoftDisableWarning") as TextBlock;
-                
+
                 if (vts.IsSoftDisabled)
                 {
                     var pluginNames = vts.DetectedOtherTTSPluginNames.Translate();
                     // 使用带占位符的本地化字符串
                     var template = "⚠ 检测到 {0} 插件已启用，TTS 将在运行时自动跳过".Translate();
                     var message = string.Format(template, pluginNames);
-                    
-                    if (warningText != null)
+
+                    if (warningText is not null)
                     {
                         warningText.Text = message;
                         warningText.Visibility = Visibility.Visible;
@@ -101,7 +94,7 @@ namespace Vpet.Plugin.CustomTTS
                 }
                 else
                 {
-                    if (warningText != null)
+                    if (warningText is not null)
                     {
                         warningText.Visibility = Visibility.Collapsed;
                     }
@@ -131,7 +124,7 @@ namespace Vpet.Plugin.CustomTTS
             if (CombProvider.SelectedItem is ComboBoxItem selectedItem)
             {
                 var provider = selectedItem.Tag?.ToString();
-                
+
                 switch (provider)
                 {
                     case "Free":
@@ -155,8 +148,8 @@ namespace Vpet.Plugin.CustomTTS
 
         private void AddFreeConfig()
         {
-            var infoText = new TextBlock 
-            { 
+            var infoText = new TextBlock
+            {
                 Text = "Free TTS 使用免费在线服务，无需配置".Translate(),
                 TextWrapping = TextWrapping.Wrap,
                 Margin = new Thickness(0, 0, 0, 8)
@@ -164,13 +157,13 @@ namespace Vpet.Plugin.CustomTTS
             ProviderConfigPanel.Children.Add(infoText);
 
             AddConfigLabel("语言设置".Translate());
-            var langCombo = new ComboBox 
-            { 
-                Name = "Free_TextLanguage", 
+            var langCombo = new ComboBox
+            {
+                Name = "Free_TextLanguage",
                 Margin = new Thickness(0, 0, 0, 8)
             };
             langCombo.SetResourceReference(StyleProperty, "StandardComboBoxStyle");
-            
+
             foreach (var lang in FreeTTSSetting.SupportedLanguages)
             {
                 var item = new ComboBoxItem { Content = lang.Value.Translate(), Tag = lang.Key };
@@ -178,9 +171,9 @@ namespace Vpet.Plugin.CustomTTS
                 if (lang.Key == vts.Set.Free.TextLanguage)
                     langCombo.SelectedItem = item;
             }
-            if (langCombo.SelectedItem == null && langCombo.Items.Count > 0)
+            if (langCombo.SelectedItem is null && langCombo.Items.Count > 0)
                 langCombo.SelectedIndex = 0;
-            
+
             ProviderConfigPanel.Children.Add(langCombo);
         }
 
@@ -274,35 +267,35 @@ namespace Vpet.Plugin.CustomTTS
             AddTextBox("DIY_ContentType", vts.Set.DIY.ContentType);
 
             AddConfigLabel("请求体 (使用 {text} 作为文本占位符)".Translate());
-            var requestBodyBox = new TextBox 
-            { 
-                Name = "DIY_RequestBody", 
+            var requestBodyBox = new TextBox
+            {
+                Name = "DIY_RequestBody",
                 Text = vts.Set.DIY.RequestBody,
-                AcceptsReturn = true, 
-                Height = 60, 
+                AcceptsReturn = true,
+                Height = 60,
                 Margin = new Thickness(0, 0, 0, 8),
                 TextWrapping = TextWrapping.Wrap,
                 VerticalScrollBarVisibility = ScrollBarVisibility.Auto
             };
             ProviderConfigPanel.Children.Add(requestBodyBox);
         }
-        
+
         private void AddConfigLabel(string text)
         {
-            var label = new TextBlock 
-            { 
-                Text = text, 
-                Margin = new Thickness(0, 0, 0, 4) 
+            var label = new TextBlock
+            {
+                Text = text,
+                Margin = new Thickness(0, 0, 0, 4)
             };
             ProviderConfigPanel.Children.Add(label);
         }
-        
+
         private void AddTextBox(string name, string text)
         {
-            var textBox = new TextBox 
-            { 
-                Name = name, 
-                Text = text ?? "", 
+            var textBox = new TextBox
+            {
+                Name = name,
+                Text = text ?? "",
                 Margin = new Thickness(0, 0, 0, 8),
                 Padding = new Thickness(5, 3, 5, 3)
             };
@@ -357,7 +350,7 @@ namespace Vpet.Plugin.CustomTTS
             vts.Set.GPTSoVITS.BaseUrl = FindControl<TextBox>("GPTSoVITS_BaseUrl")?.Text ?? "";
             vts.Set.GPTSoVITS.ReferWavPath = FindControl<TextBox>("GPTSoVITS_ReferWavPath")?.Text ?? "";
             vts.Set.GPTSoVITS.PromptText = FindControl<TextBox>("GPTSoVITS_PromptText")?.Text ?? "";
-            
+
             var apiModeCombo = FindControl<ComboBox>("GPTSoVITS_ApiMode");
             if (apiModeCombo?.SelectedItem is ComboBoxItem item)
                 vts.Set.GPTSoVITS.ApiMode = item.Tag?.ToString() ?? "WebUI";
@@ -367,7 +360,7 @@ namespace Vpet.Plugin.CustomTTS
         {
             vts.Set.URL.BaseUrl = FindControl<TextBox>("URL_BaseUrl")?.Text ?? "";
             vts.Set.URL.Voice = FindControl<TextBox>("URL_Voice")?.Text ?? "";
-            
+
             var methodCombo = FindControl<ComboBox>("URL_Method");
             if (methodCombo?.SelectedItem is ComboBoxItem item)
                 vts.Set.URL.Method = item.Tag?.ToString() ?? "GET";
@@ -378,7 +371,7 @@ namespace Vpet.Plugin.CustomTTS
             vts.Set.DIY.BaseUrl = FindControl<TextBox>("DIY_BaseUrl")?.Text ?? "";
             vts.Set.DIY.ContentType = FindControl<TextBox>("DIY_ContentType")?.Text ?? "";
             vts.Set.DIY.RequestBody = FindControl<TextBox>("DIY_RequestBody")?.Text ?? "";
-            
+
             var methodCombo = FindControl<ComboBox>("DIY_Method");
             if (methodCombo?.SelectedItem is ComboBoxItem item)
                 vts.Set.DIY.Method = item.Tag?.ToString() ?? "POST";
@@ -471,7 +464,7 @@ namespace Vpet.Plugin.CustomTTS
             {
                 // 先显示缓存统计
                 var stats = vts.GetCacheStatistics();
-                string statsInfo = stats != null 
+                string statsInfo = stats is not null
                     ? $"当前缓存: {stats.TotalFiles} 个文件, {stats.TotalSizeFormatted}\n过期文件: {stats.ExpiredFiles} 个\n\n确定要清理所有缓存吗？"
                     : "确定要清理所有缓存吗？";
 

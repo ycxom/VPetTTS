@@ -1,7 +1,3 @@
-using System;
-using System.Collections.Generic;
-using VPet_Simulator.Windows.Interface;
-
 namespace Vpet.Plugin.CustomTTS.Utils
 {
     /// <summary>
@@ -51,7 +47,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
             try
             {
-                if (mainWindow?.Plugins == null)
+                if (mainWindow?.Plugins is null)
                 {
                     return result;
                 }
@@ -114,26 +110,26 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
                 // 首先尝试获取 Set 属性
                 var setProperty = plugin.GetType().GetProperty("Set");
-                if (setProperty != null)
+                if (setProperty is not null)
                 {
                     setObject = setProperty.GetValue(plugin);
                 }
 
                 // 如果属性不存在，尝试获取 Set 字段
-                if (setObject == null)
+                if (setObject is null)
                 {
                     var setField = plugin.GetType().GetField("Set");
-                    if (setField != null)
+                    if (setField is not null)
                     {
                         setObject = setField.GetValue(plugin);
                     }
                 }
 
-                if (setObject != null)
+                if (setObject is not null)
                 {
                     // 尝试获取 Enable 属性
                     var enableProperty = setObject.GetType().GetProperty("Enable");
-                    if (enableProperty != null)
+                    if (enableProperty is not null)
                     {
                         var enableValue = enableProperty.GetValue(setObject);
                         if (enableValue is bool enabled)

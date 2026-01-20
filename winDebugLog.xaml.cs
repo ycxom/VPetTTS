@@ -1,13 +1,4 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Text;
-using System.Threading.Tasks;
-using System.Windows;
-using System.Windows.Controls;
-using System.Windows.Threading;
 using Microsoft.Win32;
-using Vpet.Plugin.CustomTTS.Utils;
 
 namespace Vpet.Plugin.CustomTTS
 {
@@ -36,10 +27,10 @@ namespace Vpet.Plugin.CustomTTS
 
             // 初始化界面
             InitializeDebugInterface();
-            
+
             // 开始监听日志
             StartLogMonitoring();
-            
+
             // 启动定时器
             _refreshTimer.Start();
         }
@@ -53,7 +44,7 @@ namespace Vpet.Plugin.CustomTTS
             {
                 // 立即刷新播放器状态
                 RefreshPlayerStatus();
-                
+
                 // 添加初始日志
                 AppendLog("=== VPetTTS 调试日志启动 ===");
                 AppendLog($"调试界面已启动 - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
@@ -76,7 +67,7 @@ namespace Vpet.Plugin.CustomTTS
                 // 重定向控制台输出到我们的日志
                 var originalOut = Console.Out;
                 Console.SetOut(new DebugLogWriter(this, originalOut));
-                
+
                 AppendLog("日志监听已启动");
             }
             catch (Exception ex)
@@ -112,17 +103,17 @@ namespace Vpet.Plugin.CustomTTS
                     // 获取当前播放器信息
                     var currentPlayerType = _plugin.CurrentPlayerType;
                     var playerDetailInfo = _plugin.GetPlayerDetailInfo();
-                    
+
                     // 更新当前播放器显示
                     txtCurrentPlayer.Text = GetPlayerTypeDisplayName(currentPlayerType);
-                    txtCurrentPlayer.Foreground = currentPlayerType == PlayerType.MpvPlayer ? 
+                    txtCurrentPlayer.Foreground = currentPlayerType == PlayerType.MpvPlayer ?
                         System.Windows.Media.Brushes.Green : System.Windows.Media.Brushes.Orange;
-                    
+
                     // 更新 VPetLLM 插件状态
                     txtVPetLLMStatus.Text = playerDetailInfo.VPetLLMPluginExists ? "✓ 已安装" : "✗ 未安装";
-                    txtVPetLLMStatus.Foreground = playerDetailInfo.VPetLLMPluginExists ? 
+                    txtVPetLLMStatus.Foreground = playerDetailInfo.VPetLLMPluginExists ?
                         System.Windows.Media.Brushes.Green : System.Windows.Media.Brushes.Red;
-                    
+
                     // 更新 mpv 播放器状态
                     if (playerDetailInfo.VPetLLMPluginExists)
                     {
@@ -142,13 +133,13 @@ namespace Vpet.Plugin.CustomTTS
                         txtMpvStatus.Text = "- VPetLLM 未安装";
                         txtMpvStatus.Foreground = System.Windows.Media.Brushes.Gray;
                     }
-                    
+
                     // 更新推荐播放器
                     var recommendedPlayer = playerDetailInfo.MpvPlayerAvailable ? PlayerType.MpvPlayer : PlayerType.VPetBuiltIn;
                     txtRecommendedPlayer.Text = GetPlayerTypeDisplayName(recommendedPlayer);
-                    txtRecommendedPlayer.Foreground = recommendedPlayer == PlayerType.MpvPlayer ? 
+                    txtRecommendedPlayer.Foreground = recommendedPlayer == PlayerType.MpvPlayer ?
                         System.Windows.Media.Brushes.Green : System.Windows.Media.Brushes.Orange;
-                    
+
                     // 如果推荐播放器与当前播放器不一致，显示警告
                     if (recommendedPlayer != currentPlayerType)
                     {
@@ -187,9 +178,9 @@ namespace Vpet.Plugin.CustomTTS
             {
                 var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
                 var logEntry = $"[{timestamp}] {message}";
-                
+
                 _logBuffer.AppendLine(logEntry);
-                
+
                 // 限制日志缓冲区大小
                 if (_logBuffer.Length > 100000) // 100KB
                 {
@@ -216,7 +207,7 @@ namespace Vpet.Plugin.CustomTTS
                     {
                         txtLog.Text = _logBuffer.ToString();
                     }
-                    
+
                     // 自动滚动到底部
                     if (chkAutoScroll.IsChecked == true)
                     {
@@ -272,13 +263,13 @@ namespace Vpet.Plugin.CustomTTS
                 AppendLog("=== 开始播放器测试 ===");
                 btnTestPlayer.IsEnabled = false;
                 btnTestPlayer.Content = "测试中...";
-                
+
                 // 运行系统测试
                 var testResult = await _plugin.RunSystemTestAsync();
-                
+
                 AppendLog($"系统测试结果: {(testResult.OverallPassed ? "✓ 全部通过" : "✗ 部分失败")}");
                 AppendLog($"测试耗时: {testResult.TestDuration.TotalMilliseconds:F0}ms");
-                
+
                 if (testResult.TestErrors.Count > 0)
                 {
                     AppendLog("测试错误:");
@@ -287,7 +278,7 @@ namespace Vpet.Plugin.CustomTTS
                         AppendLog($"  - {error}");
                     }
                 }
-                
+
                 AppendLog("=== 播放器测试完成 ===");
             }
             catch (Exception ex)
@@ -311,9 +302,9 @@ namespace Vpet.Plugin.CustomTTS
                 AppendLog("=== 开始系统诊断 ===");
                 btnRunDiagnostic.IsEnabled = false;
                 btnRunDiagnostic.Content = "诊断中...";
-                
+
                 await RunComprehensiveDiagnostic();
-                
+
                 AppendLog("=== 系统诊断完成 ===");
             }
             catch (Exception ex)
@@ -339,7 +330,7 @@ namespace Vpet.Plugin.CustomTTS
                 var pluginInfo = _plugin.GetPlayerDetailInfo();
                 AppendLog($"   当前播放器: {pluginInfo.CurrentPlayerType}");
                 AppendLog($"   播放器可用: {pluginInfo.IsPlayerAvailable}");
-                
+
                 // 2. 检查 VPetLLM 插件
                 AppendLog("2. 检查 VPetLLM 插件...");
                 AppendLog($"   插件存在: {pluginInfo.VPetLLMPluginExists}");
@@ -350,7 +341,7 @@ namespace Vpet.Plugin.CustomTTS
                     AppendLog($"   mpv 版本: {pluginInfo.MpvVersion}");
                     AppendLog($"   文件大小: {pluginInfo.MpvFileSize / 1024 / 1024:F1} MB");
                 }
-                
+
                 // 3. 检查初始化错误
                 AppendLog("3. 检查初始化错误...");
                 if (pluginInfo.InitializationErrors.Count > 0)
@@ -365,7 +356,7 @@ namespace Vpet.Plugin.CustomTTS
                 {
                     AppendLog("   无初始化错误");
                 }
-                
+
                 // 4. 检查播放器状态
                 AppendLog("4. 检查播放器状态...");
                 var playerStatus = _plugin.GetPlayerStatus();
@@ -377,17 +368,17 @@ namespace Vpet.Plugin.CustomTTS
                     AppendLog($"   最近错误: {playerStatus.LastError}");
                     AppendLog($"   错误时间: {playerStatus.LastErrorTime:yyyy-MM-dd HH:mm:ss}");
                 }
-                
+
                 // 5. 检查播放器推荐
                 AppendLog("5. 检查播放器推荐...");
                 var recommendation = _plugin.GetPlayerRecommendation();
                 AppendLog($"   推荐信息: {recommendation}");
-                
+
                 // 6. 运行播放器可用性检查
                 AppendLog("6. 运行播放器可用性检查...");
                 await _plugin.CheckPlayerAvailabilityAsync();
                 AppendLog("   播放器可用性检查完成");
-                
+
                 // 7. 生成诊断建议
                 AppendLog("7. 生成诊断建议...");
                 GenerateDiagnosticRecommendations(pluginInfo);
@@ -404,7 +395,7 @@ namespace Vpet.Plugin.CustomTTS
         private void GenerateDiagnosticRecommendations(PlayerDetailInfo info)
         {
             AppendLog("=== 诊断建议 ===");
-            
+
             if (!info.VPetLLMPluginExists)
             {
                 AppendLog("建议: 安装 VPetLLM 插件以获得 mpv 高码率音频支持");
@@ -428,7 +419,7 @@ namespace Vpet.Plugin.CustomTTS
             {
                 AppendLog("状态: mpv 播放器工作正常 ✓");
             }
-            
+
             if (info.InitializationErrors.Count > 0)
             {
                 AppendLog("注意: 发现初始化错误，这可能是播放器选择问题的根本原因");
@@ -455,16 +446,16 @@ namespace Vpet.Plugin.CustomTTS
                     {
                         File.WriteAllText(saveDialog.FileName, _logBuffer.ToString(), Encoding.UTF8);
                     }
-                    
+
                     AppendLog($"日志已保存到: {saveDialog.FileName}");
-                    MessageBox.Show($"日志已保存到:\n{saveDialog.FileName}", "保存成功", 
+                    MessageBox.Show($"日志已保存到:\n{saveDialog.FileName}", "保存成功",
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (Exception ex)
             {
                 AppendLog($"保存日志失败: {ex.Message}");
-                MessageBox.Show($"保存日志失败:\n{ex.Message}", "保存失败", 
+                MessageBox.Show($"保存日志失败:\n{ex.Message}", "保存失败",
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }
@@ -491,7 +482,7 @@ namespace Vpet.Plugin.CustomTTS
             {
                 System.Diagnostics.Debug.WriteLine($"关闭调试窗口时发生错误: {ex.Message}");
             }
-            
+
             base.OnClosed(e);
         }
     }
@@ -518,7 +509,7 @@ namespace Vpet.Plugin.CustomTTS
             {
                 // 写入到原始输出
                 _originalWriter?.WriteLine(value);
-                
+
                 // 写入到调试窗口
                 if (!string.IsNullOrEmpty(value) && value.Contains("[VPetTTS]") || value.Contains("[VPetLLMDetector]") || value.Contains("[MpvPlayer]"))
                 {

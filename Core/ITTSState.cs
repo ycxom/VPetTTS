@@ -1,5 +1,3 @@
-using System;
-
 namespace Vpet.Plugin.CustomTTS.Core
 {
     /// <summary>

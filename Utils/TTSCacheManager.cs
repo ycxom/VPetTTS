@@ -1,9 +1,3 @@
-using System;
-using System.Collections.Generic;
-using System.IO;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 
 namespace Vpet.Plugin.CustomTTS.Utils
@@ -273,11 +267,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     TotalFiles = _cacheMetadata.Count,
                     TotalSize = _cacheMetadata.Values.Sum(e => e.FileSize),
                     ExpiredFiles = _cacheMetadata.Values.Count(e => now - e.LastAccessTime > ExpirationTime),
-                    OldestAccess = _cacheMetadata.Values.Any() 
-                        ? _cacheMetadata.Values.Min(e => e.LastAccessTime) 
+                    OldestAccess = _cacheMetadata.Values.Any()
+                        ? _cacheMetadata.Values.Min(e => e.LastAccessTime)
                         : DateTime.Now,
-                    NewestAccess = _cacheMetadata.Values.Any() 
-                        ? _cacheMetadata.Values.Max(e => e.LastAccessTime) 
+                    NewestAccess = _cacheMetadata.Values.Any()
+                        ? _cacheMetadata.Values.Max(e => e.LastAccessTime)
                         : DateTime.Now
                 };
                 return stats;
@@ -343,7 +337,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             _disposed = true;
 
             _cleanupTimer?.Dispose();
-            
+
             lock (_lock)
             {
                 SaveMetadata();
@@ -373,8 +367,8 @@ namespace Vpet.Plugin.CustomTTS.Utils
         public DateTime OldestAccess { get; set; }
         public DateTime NewestAccess { get; set; }
 
-        public string TotalSizeFormatted => TotalSize < 1024 * 1024 
-            ? $"{TotalSize / 1024:F1} KB" 
+        public string TotalSizeFormatted => TotalSize < 1024 * 1024
+            ? $"{TotalSize / 1024:F1} KB"
             : $"{TotalSize / 1024 / 1024:F1} MB";
     }
 }

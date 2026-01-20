@@ -1,7 +1,3 @@
-using LinePutScript.Converter;
-using System;
-using System.Collections.Generic;
-
 namespace Vpet.Plugin.CustomTTS
 {
     public class Setting
@@ -81,7 +77,7 @@ namespace Vpet.Plugin.CustomTTS
             if (Volume > 200) Volume = 200;
             if (Speed < 0.1) Speed = 0.1;
             if (Speed > 3.0) Speed = 3.0;
-            
+
             if (string.IsNullOrWhiteSpace(Provider))
                 Provider = "Free";
         }

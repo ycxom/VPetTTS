@@ -1,8 +1,4 @@
-using System;
 using System.Diagnostics;
-using System.IO;
-using System.Threading;
-using System.Threading.Tasks;
 
 namespace Vpet.Plugin.CustomTTS.Utils
 {
@@ -51,15 +47,15 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 if (_disposed)
                     return ProcessStatus.Disposed;
-                
-                if (_process == null)
+
+                if (_process is null)
                     return ProcessStatus.NotStarted;
-                
+
                 try
                 {
                     if (_process.HasExited)
                         return ProcessStatus.Exited;
-                    
+
                     return _isPlaying ? ProcessStatus.Playing : ProcessStatus.Ready;
                 }
                 catch
@@ -215,20 +211,20 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 try
                 {
-                    while (!_cancellationTokenSource.Token.IsCancellationRequested && _process != null && !_process.HasExited)
+                    while (!_cancellationTokenSource.Token.IsCancellationRequested && _process is not null && !_process.HasExited)
                     {
                         await Task.Delay(1000, _cancellationTokenSource.Token);
-                        
+
                         // 检查进程是否响应
                         try
                         {
-                            if (_process != null && !_process.HasExited && !_process.Responding)
+                            if (_process is not null && !_process.HasExited && !_process.Responding)
                             {
                                 LogMessage("检测到 mpv 进程无响应");
-                                OnProcessExited(this, new ProcessExitedEventArgs 
-                                { 
-                                    ExitCode = -1, 
-                                    Reason = "进程无响应" 
+                                OnProcessExited(this, new ProcessExitedEventArgs
+                                {
+                                    ExitCode = -1,
+                                    Reason = "进程无响应"
                                 });
                                 break;
                             }
@@ -260,7 +256,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 var exitCode = _process?.ExitCode ?? -1;
                 var reason = exitCode == 0 ? "正常退出" : $"异常退出 (代码: {exitCode})";
-                
+
                 LogMessage($"mpv 进程退出: {reason}");
 
                 lock (_lock)
@@ -269,14 +265,14 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 }
 
                 // 触发事件
-                ProcessExited?.Invoke(this, new ProcessExitedEventArgs 
-                { 
-                    ExitCode = exitCode, 
-                    Reason = reason 
+                ProcessExited?.Invoke(this, new ProcessExitedEventArgs
+                {
+                    ExitCode = exitCode,
+                    Reason = reason
                 });
 
-                PlaybackCompleted?.Invoke(this, new PlaybackCompletedEventArgs 
-                { 
+                PlaybackCompleted?.Invoke(this, new PlaybackCompletedEventArgs
+                {
                     Success = exitCode == 0,
                     ExitCode = exitCode
                 });
@@ -304,15 +300,15 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 lock (_lock)
                 {
-                    if (_process != null && !_process.HasExited)
+                    if (_process is not null && !_process.HasExited)
                     {
                         LogMessage("正在停止 mpv 进程...");
-                        
+
                         try
                         {
                             // 尝试优雅地终止进程
                             _process.CloseMainWindow();
-                            
+
                             // 等待进程退出
                             if (!_process.WaitForExit(3000))
                             {
@@ -332,8 +328,8 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
                 // 取消监控任务
                 _cancellationTokenSource?.Cancel();
-                
-                if (_processMonitorTask != null)
+
+                if (_processMonitorTask is not null)
                 {
                     try
                     {
@@ -373,14 +369,14 @@ namespace Vpet.Plugin.CustomTTS.Utils
             try
             {
                 _disposed = true;
-                
+
                 // 停止播放
                 StopAsync().Wait(5000);
 
                 // 释放进程资源
                 lock (_lock)
                 {
-                    if (_process != null)
+                    if (_process is not null)
                     {
                         try
                         {

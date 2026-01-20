@@ -1,8 +1,4 @@
-using System;
-using System.IO;
-using System.Text;
 using System.Text.RegularExpressions;
-using System.Threading.Tasks;
 
 namespace Vpet.Plugin.CustomTTS.Utils
 {
@@ -17,7 +13,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         public static AudioPathValidationResult ValidateAudioPath(string path)
         {
             var result = new AudioPathValidationResult();
-            
+
             if (string.IsNullOrEmpty(path))
             {
                 result.IsValid = false;
@@ -87,7 +83,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 result.IsValid = true;
                 result.FileSize = fileInfo.Length;
                 result.FileExtension = extension;
-                
+
                 return result;
             }
             catch (Exception ex)
@@ -112,10 +108,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 // 获取绝对路径
                 var absolutePath = Path.GetFullPath(path);
-                
+
                 // 处理特殊字符
                 absolutePath = HandleSpecialCharacters(absolutePath);
-                
+
                 // 创建 URI
                 var uri = new Uri(absolutePath);
                 return uri.ToString();
@@ -178,7 +174,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 ".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma"
             };
 
-            return Array.Exists(supportedFormats, format => 
+            return Array.Exists(supportedFormats, format =>
                 string.Equals(format, extension, StringComparison.OrdinalIgnoreCase));
         }
 
@@ -192,7 +188,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var tempDir = Path.GetTempPath();
                 var fileName = $"vpet_tts_{Guid.NewGuid():N}{extension}";
                 var tempPath = Path.Combine(tempDir, fileName);
-                
+
                 LogMessage($"生成临时音频文件路径: {tempPath}");
                 return tempPath;
             }
@@ -242,16 +238,16 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 // 移除多余的引号
                 path = path.Trim('"', '\'');
-                
+
                 // 修复双反斜杠
                 path = Regex.Replace(path, @"\\+", @"\");
-                
+
                 // 修复混合的路径分隔符
                 path = path.Replace('/', '\\');
-                
+
                 // 移除路径末尾的分隔符
                 path = path.TrimEnd('\\', '/');
-                
+
                 LogMessage($"路径修复完成: {Path.GetFileName(path)}");
                 return path;
             }
