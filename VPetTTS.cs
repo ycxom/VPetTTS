@@ -89,6 +89,16 @@ namespace Vpet.Plugin.CustomTTS
         private ITTSProcessingService _ttsProcessingService;
 
         /// <summary>
+        /// 待处理的 TTS 请求队列（用于处理服务初始化前的请求）
+        /// </summary>
+        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _pendingTTSRequests = new();
+
+        /// <summary>
+        /// 是否正在处理待处理队列
+        /// </summary>
+        private bool _isProcessingPendingQueue = false;
+
+        /// <summary>
         /// 系统测试服务
         /// </summary>
         private ISystemTestService _systemTestService;
@@ -172,24 +182,43 @@ namespace Vpet.Plugin.CustomTTS
             _audioPlaybackService = new AudioPlaybackService(_playerManager, _stateManager, MW, new PlayerErrorHandler());
 
             // 5. TTS 处理服务（需要 ttsManager, _cacheManager, _preloadService，由 InitializationService 设置）
-            // 延迟创建，等待初始化完成
+            // 修复：不再延迟创建，改为在初始化完成后立即创建
+            // 使用后台任务等待初始化完成，但不阻塞插件加载
             _ = Task.Run(async () =>
             {
-                await Task.Delay(500); // 等待初始化服务完成
-                _ttsProcessingService = new TTSProcessingService(
-                    ttsManager,
-                    _stateManager,
-                    _cacheManager,
-                    _preloadService,
-                    _audioPlaybackService,
-                    Set);
-                Console.WriteLine("[VPetTTS] TTS 处理服务初始化完成");
-                
-                // 更新协调器中的 TTS 处理服务引用
-                if (_ttsCoordinator is VPetLLMTTSCoordinator coordinator)
+                // 等待初始化服务完成（最多等待 2 秒）
+                int waitCount = 0;
+                while ((ttsManager == null || _cacheManager == null || _preloadService == null) && waitCount < 40)
                 {
-                    coordinator.SetTTSProcessingService(_ttsProcessingService);
-                    Console.WriteLine("[VPetTTS] 协调器的 TTS 处理服务引用已更新");
+                    await Task.Delay(50);
+                    waitCount++;
+                }
+
+                if (ttsManager != null && _cacheManager != null && _preloadService != null)
+                {
+                    _ttsProcessingService = new TTSProcessingService(
+                        ttsManager,
+                        _stateManager,
+                        _cacheManager,
+                        _preloadService,
+                        _audioPlaybackService,
+                        Set);
+                    Console.WriteLine("[VPetTTS] TTS 处理服务初始化完成");
+                    
+                    // 更新协调器中的 TTS 处理服务引用
+                    if (_ttsCoordinator is VPetLLMTTSCoordinator coordinator)
+                    {
+                        coordinator.SetTTSProcessingService(_ttsProcessingService);
+                        Console.WriteLine("[VPetTTS] 协调器的 TTS 处理服务引用已更新");
+                    }
+
+                    // 处理待处理队列中的请求
+                    await ProcessPendingTTSRequestsAsync();
+                }
+                else
+                {
+                    Console.WriteLine("[VPetTTS] TTS 处理服务初始化失败：依赖组件未初始化");
+                    Console.WriteLine($"[VPetTTS] ttsManager: {ttsManager != null}, _cacheManager: {_cacheManager != null}, _preloadService: {_preloadService != null}");
                 }
             });
 
@@ -394,37 +423,97 @@ namespace Vpet.Plugin.CustomTTS
         {
             try
             {
+                // 添加日志：收到 OnSay 事件
+                LogMessage("Main_OnSay: 收到 OnSay 事件");
+
                 if (!Set.Enable)
+                {
+                    LogMessage("Main_OnSay: 插件未启用，跳过");
                     return;
+                }
 
                 // 检查是否处于独占会话（文本获取屏蔽）
                 if (_sessionManager != null && !_sessionManager.IsTextCaptureEnabled())
                 {
-                    LogMessage("独占会话期间：屏蔽原有文本获取");
+                    LogMessage("Main_OnSay: 独占会话期间，屏蔽原有文本获取");
                     return;
                 }
 
                 // 实时检测是否应该跳过 TTS（软禁用）
-                if (_pluginDetectionService?.ShouldSkipTTS() == true)
+                var shouldSkip = _pluginDetectionService?.ShouldSkipTTS() == true;
+                if (shouldSkip)
                 {
-                    LogMessage("软禁用：检测到其他 TTS 插件已启用，跳过本次 TTS");
+                    LogMessage($"Main_OnSay: 软禁用检测 - 检测到其他 TTS 插件已启用 ({_pluginDetectionService?.DetectedOtherPluginNames})，跳过本次 TTS");
                     return;
                 }
+                else
+                {
+                    LogMessage("Main_OnSay: 软禁用检测通过，继续处理");
+                }
+
+                // 获取文本
+                var saythings = await sayInfo.GetSayText().ConfigureAwait(false);
+                if (string.IsNullOrWhiteSpace(saythings))
+                {
+                    LogMessage("Main_OnSay: 文本为空，跳过");
+                    return;
+                }
+
+                LogMessage($"Main_OnSay: 处理文本: {saythings.Substring(0, Math.Min(30, saythings.Length))}...");
 
                 // 委托给 TTS 处理服务
                 if (_ttsProcessingService is not null)
                 {
-                    var saythings = await sayInfo.GetSayText().ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(saythings))
-                    {
-                        await _ttsProcessingService.ProcessTTSRequestAsync(saythings);
-                    }
+                    LogMessage("Main_OnSay: 调用 TTS 处理服务");
+                    await _ttsProcessingService.ProcessTTSRequestAsync(saythings);
+                    LogMessage("Main_OnSay: TTS 处理服务调用完成");
+                }
+                else
+                {
+                    // TTS 处理服务还未初始化，将请求加入队列
+                    LogMessage($"Main_OnSay: TTS 处理服务未初始化，将请求加入队列: {saythings.Substring(0, Math.Min(30, saythings.Length))}...");
+                    _pendingTTSRequests.Enqueue(saythings);
                 }
             }
             catch (Exception ex)
             {
-                LogMessage($"TTS处理失败: {ex.Message}");
+                LogMessage($"Main_OnSay: TTS处理失败: {ex.Message}");
+                LogMessage($"Main_OnSay: 堆栈跟踪: {ex.StackTrace}");
                 _stateManager?.SetError($"TTS处理失败: {ex.Message}", ex, TTSOperationStage.Processing);
+            }
+        }
+
+        /// <summary>
+        /// 处理待处理队列中的 TTS 请求
+        /// </summary>
+        private async Task ProcessPendingTTSRequestsAsync()
+        {
+            if (_isProcessingPendingQueue || _ttsProcessingService == null)
+                return;
+
+            _isProcessingPendingQueue = true;
+            try
+            {
+                LogMessage($"开始处理待处理队列，队列长度: {_pendingTTSRequests.Count}");
+
+                while (_pendingTTSRequests.TryDequeue(out var text))
+                {
+                    try
+                    {
+                        LogMessage($"处理队列中的请求: {text.Substring(0, Math.Min(30, text.Length))}...");
+                        await _ttsProcessingService.ProcessTTSRequestAsync(text);
+                    }
+                    catch (Exception ex)
+                    {
+                        LogMessage($"处理队列请求失败: {ex.Message}");
+                    }
+                }
+
+                LogMessage("待处理队列处理完成");
+            }
+            finally
+            {
+                _isProcessingPendingQueue = false;
             }
         }
 
