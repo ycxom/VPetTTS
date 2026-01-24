@@ -46,7 +46,8 @@ public class TTSProcessingService : ITTSProcessingService
 
             if (!string.IsNullOrEmpty(cachedPath))
             {
-                // 缓存命中，直接播放
+                // 缓存命中，等待当前播放完成后再播放
+                await WaitForCurrentPlaybackAsync();
                 await _audioPlaybackService.PlayAudioAsync(cachedPath);
                 return;
             }
@@ -54,9 +55,10 @@ public class TTSProcessingService : ITTSProcessingService
             // 2. 生成音频并缓存
             var audioPath = await GenerateAndCacheAudioAsync(text);
 
-            // 3. 播放音频
+            // 3. 等待当前播放完成后再播放音频
             if (!string.IsNullOrEmpty(audioPath))
             {
+                await WaitForCurrentPlaybackAsync();
                 await _audioPlaybackService.PlayAudioAsync(audioPath);
             }
         }
@@ -64,6 +66,44 @@ public class TTSProcessingService : ITTSProcessingService
         {
             _stateManager?.SetError($"TTS 处理失败: {ex.Message}", ex, TTSOperationStage.Processing);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// 等待当前播放完成
+    /// </summary>
+    private async Task WaitForCurrentPlaybackAsync()
+    {
+        try
+        {
+            // 如果当前正在播放，等待播放完成
+            if (_audioPlaybackService.IsPlaying)
+            {
+                Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 检测到正在播放，等待播放完成...");
+                
+                int maxWaitTime = 30000; // 最多等待30秒
+                int checkInterval = 100;  // 每100ms检查一次
+                int elapsedTime = 0;
+
+                while (_audioPlaybackService.IsPlaying && elapsedTime < maxWaitTime)
+                {
+                    await Task.Delay(checkInterval);
+                    elapsedTime += checkInterval;
+                }
+
+                if (elapsedTime >= maxWaitTime)
+                {
+                    Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待播放完成超时");
+                }
+                else
+                {
+                    Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 播放已完成，等待时间: {elapsedTime}ms");
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待播放完成失败: {ex.Message}");
         }
     }
 

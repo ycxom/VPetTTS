@@ -12,6 +12,7 @@ public class InitializationService : IInitializationService
 
     // 组件引用（由 VPetTTS 传入或创建）
     private TTSStateManager _stateManager;
+    private ExclusiveSessionManager _sessionManager;
     private VPetLLMTTSCoordinator _ttsCoordinator;
     private TTSCacheManager _cacheManager;
     private TTSManager _ttsManager;
@@ -107,14 +108,17 @@ public class InitializationService : IInitializationService
 
         LogMessage("TTS 状态管理器已初始化");
 
-        // 初始化 VPetLLM TTS 协调器
-        _ttsCoordinator = new VPetLLMTTSCoordinator(_stateManager);
+        // 初始化独占会话管理器
+        _sessionManager = new ExclusiveSessionManager();
 
-        // 将协调器设置到插件中
-        _plugin.GetType().GetField("_ttsCoordinator", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            ?.SetValue(_plugin, _ttsCoordinator);
+        // 将会话管理器设置到插件中
+        _plugin.GetType().GetField("_sessionManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            ?.SetValue(_plugin, _sessionManager);
 
-        LogMessage("VPetLLM TTS 协调器已初始化");
+        LogMessage("独占会话管理器已初始化");
+
+        // 注意：VPetLLM TTS 协调器需要在预加载服务和 TTS 处理服务初始化后创建
+        // 所以我们在 InitializePreloadService 中创建
     }
 
     /// <summary>
@@ -178,6 +182,16 @@ public class InitializationService : IInitializationService
             ?.SetValue(_plugin, _preloadService);
 
         LogMessage("音频预加载服务已初始化");
+
+        // 现在初始化 VPetLLM TTS 协调器（需要所有依赖）
+        // 注意：TTS 处理服务可能还未创建，所以传 null
+        _ttsCoordinator = new VPetLLMTTSCoordinator(_stateManager, _sessionManager, _preloadService, null);
+
+        // 将协调器设置到插件中
+        _plugin.GetType().GetField("_ttsCoordinator", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+            ?.SetValue(_plugin, _ttsCoordinator);
+
+        LogMessage("VPetLLM TTS 协调器已初始化");
     }
 
     /// <summary>

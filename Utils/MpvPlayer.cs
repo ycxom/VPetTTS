@@ -96,8 +96,19 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
             try
             {
-                // 停止当前播放（如果有）
-                await StopAsync();
+                // 检查是否正在播放
+                bool wasPlaying = false;
+                lock (_lock)
+                {
+                    wasPlaying = _isPlaying;
+                }
+
+                if (wasPlaying)
+                {
+                    LogMessage($"警告: 正在播放其他音频，将停止当前播放");
+                    // 停止当前播放（如果有）
+                    await StopAsync();
+                }
 
                 // 重新创建 CancellationTokenSource（因为 StopAsync 会取消它）
                 _cancellationTokenSource?.Dispose();

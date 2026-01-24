@@ -17,10 +17,11 @@ public class ResourceCleanupService : IResourceCleanupService
         PreloadService preloadService,
         PlayerErrorHandler errorHandler)
     {
-        _playerManager = playerManager ?? throw new ArgumentNullException(nameof(playerManager));
-        _cacheManager = cacheManager ?? throw new ArgumentNullException(nameof(cacheManager));
-        _preloadService = preloadService ?? throw new ArgumentNullException(nameof(preloadService));
-        _errorHandler = errorHandler ?? throw new ArgumentNullException(nameof(errorHandler));
+        // 允许 null 参数，因为在清理时这些服务可能还未初始化或已被释放
+        _playerManager = playerManager;
+        _cacheManager = cacheManager;
+        _preloadService = preloadService;
+        _errorHandler = errorHandler;
     }
 
     /// <summary>
@@ -46,6 +47,11 @@ public class ResourceCleanupService : IResourceCleanupService
         }
         catch { }
     }
+
+    /// <summary>
+    /// 检查服务是否已初始化
+    /// </summary>
+    public bool IsInitialized => _playerManager is not null && _cacheManager is not null;
 
     /// <summary>
     /// 系统关闭时的资源释放

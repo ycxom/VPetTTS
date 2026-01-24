@@ -14,6 +14,11 @@ namespace Vpet.Plugin.CustomTTS
         private TTSStateManager _stateManager;
 
         /// <summary>
+        /// 独占会话管理器
+        /// </summary>
+        private ExclusiveSessionManager _sessionManager;
+
+        /// <summary>
         /// VPetLLM TTS 协调器
         /// </summary>
         private VPetLLMTTSCoordinator _ttsCoordinator;
@@ -178,13 +183,26 @@ namespace Vpet.Plugin.CustomTTS
                     _preloadService,
                     _audioPlaybackService,
                     Set);
+                Console.WriteLine("[VPetTTS] TTS 处理服务初始化完成");
+                
+                // 更新协调器中的 TTS 处理服务引用
+                if (_ttsCoordinator is VPetLLMTTSCoordinator coordinator)
+                {
+                    coordinator.SetTTSProcessingService(_ttsProcessingService);
+                    Console.WriteLine("[VPetTTS] 协调器的 TTS 处理服务引用已更新");
+                }
             });
 
             // 6. 系统测试服务
             _systemTestService = new SystemTestService(_playerManager, _audioPlaybackService, _pluginDetectionService);
 
-            // 7. 资源清理服务
-            _resourceCleanupService = new ResourceCleanupService(_playerManager, _cacheManager, _preloadService, new PlayerErrorHandler());
+            // 7. 资源清理服务（延迟创建，等待初始化完成）
+            _ = Task.Run(async () =>
+            {
+                await Task.Delay(500); // 等待初始化服务完成
+                _resourceCleanupService = new ResourceCleanupService(_playerManager, _cacheManager, _preloadService, new PlayerErrorHandler());
+                Console.WriteLine("[VPetTTS] 资源清理服务初始化完成");
+            });
 
             // 如果启用TTS，注册SayProcess事件
             // 软禁用模式：即使检测到其他插件也注册事件，在运行时检测并跳过
@@ -211,6 +229,25 @@ namespace Vpet.Plugin.CustomTTS
             // 通知可用性状态
             _stateManager?.NotifyAvailabilityChanged("插件加载完成");
 
+            // 启动定时器，定期清理超时会话（每 30 秒检查一次）
+            _refreshTimer = new DispatcherTimer
+            {
+                Interval = TimeSpan.FromSeconds(30)
+            };
+            _refreshTimer.Tick += (s, e) =>
+            {
+                try
+                {
+                    _sessionManager?.CheckAndCleanupTimedOutSession();
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[VPetTTS] 清理超时会话失败: {ex.Message}");
+                }
+            };
+            _refreshTimer.Start();
+            Console.WriteLine("[VPetTTS] 启动会话超时清理定时器（30秒间隔）");
+
             // 注册应用程序退出事件
             Application.Current.Exit += OnApplicationExit;
         }
@@ -220,6 +257,9 @@ namespace Vpet.Plugin.CustomTTS
         /// </summary>
         private void OnApplicationExit(object sender, ExitEventArgs e)
         {
+            // 停止定时器
+            _refreshTimer?.Stop();
+            
             _resourceCleanupService?.OnSystemShutdown();
         }
 
@@ -356,6 +396,13 @@ namespace Vpet.Plugin.CustomTTS
             {
                 if (!Set.Enable)
                     return;
+
+                // 检查是否处于独占会话（文本获取屏蔽）
+                if (_sessionManager != null && !_sessionManager.IsTextCaptureEnabled())
+                {
+                    LogMessage("独占会话期间：屏蔽原有文本获取");
+                    return;
+                }
 
                 // 实时检测是否应该跳过 TTS（软禁用）
                 if (_pluginDetectionService?.ShouldSkipTTS() == true)
