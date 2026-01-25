@@ -89,16 +89,6 @@ namespace Vpet.Plugin.CustomTTS
         private ITTSProcessingService _ttsProcessingService;
 
         /// <summary>
-        /// 待处理的 TTS 请求队列（用于处理服务初始化前的请求）
-        /// </summary>
-        private readonly System.Collections.Concurrent.ConcurrentQueue<string> _pendingTTSRequests = new();
-
-        /// <summary>
-        /// 是否正在处理待处理队列
-        /// </summary>
-        private bool _isProcessingPendingQueue = false;
-
-        /// <summary>
         /// 系统测试服务
         /// </summary>
         private ISystemTestService _systemTestService;
@@ -164,10 +154,41 @@ namespace Vpet.Plugin.CustomTTS
             // 1. 初始化服务（负责所有组件的初始化）
             // 注意：InitializationService 会通过反射设置 _stateManager, _ttsCoordinator, _cacheManager, _preloadService
             _initializationService = new InitializationService(MW, Set, this);
-            _ = Task.Run(async () => await _initializationService.InitializeAllAsync());
-
-            // 等待状态管理器初始化（同步等待，确保后续服务可以使用）
-            System.Threading.Thread.Sleep(100); // 给初始化服务一点时间
+            
+            // 修复：使用后台线程初始化，但等待完成后再继续
+            // 使用 ManualResetEventSlim 避免死锁
+            var initCompleted = new System.Threading.ManualResetEventSlim(false);
+            Exception initException = null;
+            
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    await _initializationService.InitializeAllAsync().ConfigureAwait(false);
+                }
+                catch (Exception ex)
+                {
+                    initException = ex;
+                }
+                finally
+                {
+                    initCompleted.Set();
+                }
+            });
+            
+            // 等待初始化完成（最多等待 10 秒）
+            if (!initCompleted.Wait(TimeSpan.FromSeconds(10)))
+            {
+                LogMessage("警告：初始化服务超时（10秒），继续加载插件");
+            }
+            else if (initException != null)
+            {
+                LogMessage($"初始化服务失败: {initException.Message}");
+            }
+            else
+            {
+                LogMessage("初始化服务完成");
+            }
 
             // 2. 插件检测服务
             _pluginDetectionService = new PluginDetectionService(MW, PluginName);
@@ -182,56 +203,37 @@ namespace Vpet.Plugin.CustomTTS
             _audioPlaybackService = new AudioPlaybackService(_playerManager, _stateManager, MW, new PlayerErrorHandler());
 
             // 5. TTS 处理服务（需要 ttsManager, _cacheManager, _preloadService，由 InitializationService 设置）
-            // 修复：不再延迟创建，改为在初始化完成后立即创建
-            // 使用后台任务等待初始化完成，但不阻塞插件加载
-            _ = Task.Run(async () =>
+            // 修复：同步创建 TTS 处理服务，确保在 LoadPlugin 返回前完成
+            if (ttsManager != null && _cacheManager != null && _preloadService != null)
             {
-                // 等待初始化服务完成（最多等待 2 秒）
-                int waitCount = 0;
-                while ((ttsManager == null || _cacheManager == null || _preloadService == null) && waitCount < 40)
+                _ttsProcessingService = new TTSProcessingService(
+                    ttsManager,
+                    _stateManager,
+                    _cacheManager,
+                    _preloadService,
+                    _audioPlaybackService,
+                    Set);
+                LogMessage("TTS 处理服务初始化完成");
+                
+                // 更新协调器中的 TTS 处理服务引用
+                if (_ttsCoordinator is VPetLLMTTSCoordinator coordinator)
                 {
-                    await Task.Delay(50);
-                    waitCount++;
+                    coordinator.SetTTSProcessingService(_ttsProcessingService);
+                    LogMessage("协调器的 TTS 处理服务引用已更新");
                 }
-
-                if (ttsManager != null && _cacheManager != null && _preloadService != null)
-                {
-                    _ttsProcessingService = new TTSProcessingService(
-                        ttsManager,
-                        _stateManager,
-                        _cacheManager,
-                        _preloadService,
-                        _audioPlaybackService,
-                        Set);
-                    Console.WriteLine("[VPetTTS] TTS 处理服务初始化完成");
-                    
-                    // 更新协调器中的 TTS 处理服务引用
-                    if (_ttsCoordinator is VPetLLMTTSCoordinator coordinator)
-                    {
-                        coordinator.SetTTSProcessingService(_ttsProcessingService);
-                        Console.WriteLine("[VPetTTS] 协调器的 TTS 处理服务引用已更新");
-                    }
-
-                    // 处理待处理队列中的请求
-                    await ProcessPendingTTSRequestsAsync();
-                }
-                else
-                {
-                    Console.WriteLine("[VPetTTS] TTS 处理服务初始化失败：依赖组件未初始化");
-                    Console.WriteLine($"[VPetTTS] ttsManager: {ttsManager != null}, _cacheManager: {_cacheManager != null}, _preloadService: {_preloadService != null}");
-                }
-            });
+            }
+            else
+            {
+                LogMessage("TTS 处理服务初始化失败：依赖组件未初始化");
+                LogMessage($"ttsManager: {ttsManager != null}, _cacheManager: {_cacheManager != null}, _preloadService: {_preloadService != null}");
+            }
 
             // 6. 系统测试服务
             _systemTestService = new SystemTestService(_playerManager, _audioPlaybackService, _pluginDetectionService);
 
-            // 7. 资源清理服务（延迟创建，等待初始化完成）
-            _ = Task.Run(async () =>
-            {
-                await Task.Delay(500); // 等待初始化服务完成
-                _resourceCleanupService = new ResourceCleanupService(_playerManager, _cacheManager, _preloadService, new PlayerErrorHandler());
-                Console.WriteLine("[VPetTTS] 资源清理服务初始化完成");
-            });
+            // 7. 资源清理服务
+            _resourceCleanupService = new ResourceCleanupService(_playerManager, _cacheManager, _preloadService, new PlayerErrorHandler());
+            LogMessage("资源清理服务初始化完成");
 
             // 如果启用TTS，注册SayProcess事件
             // 软禁用模式：即使检测到其他插件也注册事件，在运行时检测并跳过
@@ -470,9 +472,8 @@ namespace Vpet.Plugin.CustomTTS
                 }
                 else
                 {
-                    // TTS 处理服务还未初始化，将请求加入队列
-                    LogMessage($"Main_OnSay: TTS 处理服务未初始化，将请求加入队列: {saythings.Substring(0, Math.Min(30, saythings.Length))}...");
-                    _pendingTTSRequests.Enqueue(saythings);
+                    // TTS 处理服务未初始化（不应该发生，因为现在是同步初始化）
+                    LogMessage($"Main_OnSay: 错误 - TTS 处理服务未初始化");
                 }
             }
             catch (Exception ex)
@@ -480,40 +481,6 @@ namespace Vpet.Plugin.CustomTTS
                 LogMessage($"Main_OnSay: TTS处理失败: {ex.Message}");
                 LogMessage($"Main_OnSay: 堆栈跟踪: {ex.StackTrace}");
                 _stateManager?.SetError($"TTS处理失败: {ex.Message}", ex, TTSOperationStage.Processing);
-            }
-        }
-
-        /// <summary>
-        /// 处理待处理队列中的 TTS 请求
-        /// </summary>
-        private async Task ProcessPendingTTSRequestsAsync()
-        {
-            if (_isProcessingPendingQueue || _ttsProcessingService == null)
-                return;
-
-            _isProcessingPendingQueue = true;
-            try
-            {
-                LogMessage($"开始处理待处理队列，队列长度: {_pendingTTSRequests.Count}");
-
-                while (_pendingTTSRequests.TryDequeue(out var text))
-                {
-                    try
-                    {
-                        LogMessage($"处理队列中的请求: {text.Substring(0, Math.Min(30, text.Length))}...");
-                        await _ttsProcessingService.ProcessTTSRequestAsync(text);
-                    }
-                    catch (Exception ex)
-                    {
-                        LogMessage($"处理队列请求失败: {ex.Message}");
-                    }
-                }
-
-                LogMessage("待处理队列处理完成");
-            }
-            finally
-            {
-                _isProcessingPendingQueue = false;
             }
         }
 
