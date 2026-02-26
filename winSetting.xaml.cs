@@ -387,6 +387,20 @@ namespace Vpet.Plugin.CustomTTS
             return null;
         }
 
+        private void BlockedPlugins_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var win = new winBlockedPlugins(vts);
+                win.Owner = this;
+                win.ShowDialog();
+            }
+            catch (Exception ex)
+            {
+                MessageBoxX.Show($"打开插件屏蔽设置失败: {ex.Message}".Translate(), "错误".Translate());
+            }
+        }
+
         private void Save_Click(object sender, RoutedEventArgs e)
         {
             try

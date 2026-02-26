@@ -69,6 +69,19 @@ namespace Vpet.Plugin.CustomTTS
         public DIYTTSSetting DIY { get; set; } = new DIYTTSSetting();
 
         /// <summary>
+        /// 屏蔽的插件名称列表（这些插件触发的 Say 不会生成 TTS）
+        /// </summary>
+        [Line]
+        public List<string> BlockedPlugins { get; set; } = new List<string>();
+
+        /// <summary>
+        /// 用户明确允许的云端屏蔽 mod ID 列表
+        /// （云端推荐屏蔽但用户选择放行的 mod）
+        /// </summary>
+        [Line]
+        public List<string> CloudBanAllowedMods { get; set; } = new List<string>();
+
+        /// <summary>
         /// 验证设置
         /// </summary>
         public void Validate()

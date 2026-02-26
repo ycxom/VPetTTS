@@ -8,6 +8,7 @@
     ".NETCoreApp,Version=v8.0": {
       "VPet.Plugin.CustomTTS/1.0.0": {
         "dependencies": {
+          "Lib.Harmony": "2.3.3",
           "LinePutScript": "1.11.9",
           "LinePutScript.Localization.WPF": "1.0.7",
           "Newtonsoft.Json": "13.0.3",
@@ -18,6 +19,14 @@
         },
         "runtime": {
           "VPet.Plugin.CustomTTS.dll": {}
+        }
+      },
+      "Lib.Harmony/2.3.3": {
+        "runtime": {
+          "lib/net8.0/0Harmony.dll": {
+            "assemblyVersion": "2.3.3.0",
+            "fileVersion": "2.3.3.0"
+          }
         }
       },
       "LinePutScript/1.11.9": {
@@ -154,6 +163,13 @@
       "type": "project",
       "serviceable": false,
       "sha512": ""
+    },
+    "Lib.Harmony/2.3.3": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-qxO8d2q7luoY8mTfCStQFOgRSd3dWZSS0Ffi5nrjX4qFkZxEBAEvNh5b/ZejTl2kY0fJs62LmfRJkBBTeiuuyQ==",
+      "path": "lib.harmony/2.3.3",
+      "hashPath": "lib.harmony.2.3.3.nupkg.sha512"
     },
     "LinePutScript/1.11.9": {
       "type": "package",

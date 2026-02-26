@@ -9,6 +9,7 @@
     <PlatformTarget>AnyCPU</PlatformTarget>
     <DesignTimeBuild>true</DesignTimeBuild>
     <LangVersion>11.0</LangVersion>
+    <CopyLocalLockFileAssemblies>true</CopyLocalLockFileAssemblies>
   </PropertyGroup>
   <ItemGroup>
     <Compile Remove="1102_VPetTTS\**" />
@@ -17,6 +18,7 @@
     <None Include="1102_VPetTTS\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Lib.Harmony" Version="2.3.3" />
     <PackageReference Include="LinePutScript" Version="1.11.9" />
     <PackageReference Include="LinePutScript.Localization.WPF" Version="1.0.7" />
     <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
@@ -33,7 +35,7 @@
   <Target Name="CopyToPlugin" AfterTargets="Build">
     <MakeDir Directories="$(ProjectDir)1102_VPetTTS\plugin\" Condition="!Exists('$(ProjectDir)1102_VPetTTS\plugin\')" />
     <ItemGroup>
-      <PluginFiles Include="$(OutputPath)*.dll" Exclude="$(OutputPath)VPet-Simulator*.dll;$(OutputPath)LinePutScript*.dll" />
+      <PluginFiles Include="$(OutputPath)*.dll" Exclude="$(OutputPath)VPet-Simulator*.dll;$(OutputPath)LinePutScript*.dll;$(OutputPath)Panuon*.dll;$(OutputPath)Microsoft.*.dll;$(OutputPath)System.*.dll;$(OutputPath)netstandard.dll" />
       <PluginFiles Include="$(OutputPath)*.json" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(ProjectDir)1102_VPetTTS\plugin\" SkipUnchangedFiles="true" />

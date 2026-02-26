@@ -6,8 +6,8 @@
         xmlns:pu="clr-namespace:Panuon.WPF.UI;assembly=Panuon.WPF.UI"
         xmlns:ll="clr-namespace:LinePutScript.Localization.WPF;assembly=LinePutScript.Localization.WPF"
         mc:Ignorable="d"
-        Title="{ll:Str VPetTTS 设置}" 
-        Width="500" Height="Auto" 
+        Title="{ll:Str VPetTTS 设置}"
+        Width="630" Height="Auto"
         SizeToContent="Height"
         ResizeMode="NoResize"
         WindowStartupLocation="CenterScreen"
@@ -16,7 +16,7 @@
     <Window.Resources>
         <ResourceDictionary Source="/VPet-Simulator.Windows.Interface;component/ResourceStyle.xaml" />
     </Window.Resources>
-    
+
     <Grid Margin="12" Background="{DynamicResource PrimaryLighter}">
         <Grid.ColumnDefinitions>
             <ColumnDefinition Width="Auto" />
@@ -38,68 +38,68 @@
             <RowDefinition Height="40" />
             <RowDefinition Height="40" />
         </Grid.RowDefinitions>
-        
+
         <!-- 软禁用警告 -->
         <TextBlock x:Name="SoftDisableWarning" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4"
-                   Text="" TextWrapping="Wrap" 
+                   Text="" TextWrapping="Wrap"
                    Foreground="#FF8C00" FontWeight="Bold"
                    Margin="0,0,0,10" Padding="8"
                    Background="#FFF8DC"
                    Visibility="Collapsed" />
-        
+
         <!-- 基本设置 -->
         <TextBlock Grid.Row="1" Text="{ll:Str 启用}" VerticalAlignment="Center" />
         <TextBlock Grid.Row="2" Text="{ll:Str 音量}" VerticalAlignment="Center" />
         <TextBlock Grid.Row="3" Text="{ll:Str 语速}" VerticalAlignment="Center" />
         <TextBlock Grid.Row="4" Text="{ll:Str 缓存}" VerticalAlignment="Center" />
         <TextBlock Grid.Row="5" Text="{ll:Str 提供商}" VerticalAlignment="Center" />
-        
+
         <!-- 启用开关 -->
         <pu:Switch x:Name="SwitchOn" Grid.Row="1" Grid.Column="2"
                    BorderBrush="{DynamicResource DARKPrimaryDark}"
-                   CheckedBackground="{DynamicResource DARKPrimary}" 
+                   CheckedBackground="{DynamicResource DARKPrimary}"
                    CheckedBorderBrush="{DynamicResource DARKPrimary}"
-                   Background="Transparent" BoxWidth="35" BoxHeight="18" 
+                   Background="Transparent" BoxWidth="35" BoxHeight="18"
                    ToggleSize="14" ToggleShadowColor="{x:Null}"
-                   ToggleBrush="{DynamicResource DARKPrimaryDark}" 
+                   ToggleBrush="{DynamicResource DARKPrimaryDark}"
                    Content="{ll:Str 启用 VPetTTS}"
                    CheckedToggleBrush="{DynamicResource DARKPrimaryText}" />
-        
+
         <!-- 音量滑块 -->
-        <Slider Grid.Row="2" Grid.Column="2" x:Name="VolumeSilder" 
-                Minimum="0" Maximum="200" Value="100" 
+        <Slider Grid.Row="2" Grid.Column="2" x:Name="VolumeSilder"
+                Minimum="0" Maximum="200" Value="100"
                 VerticalAlignment="Center"
                 Background="{DynamicResource DARKPrimaryLighter}"
                 pu:SliderHelper.CoveredBackground="{DynamicResource DARKPrimaryDarker}" />
-        <pu:NumberInput Grid.Row="2" Grid.Column="3" 
+        <pu:NumberInput Grid.Row="2" Grid.Column="3"
                         Minimum="0" Maximum="200" Margin="5"
-                        Value="{Binding Value, ElementName=VolumeSilder}" 
+                        Value="{Binding Value, ElementName=VolumeSilder}"
                         CornerRadius="3" />
-        
+
         <!-- 语速滑块 -->
-        <Slider Grid.Row="3" Grid.Column="2" x:Name="SpeedSilder" 
-                Minimum="0.1" Maximum="3.0" Value="1.0" 
+        <Slider Grid.Row="3" Grid.Column="2" x:Name="SpeedSilder"
+                Minimum="0.1" Maximum="3.0" Value="1.0"
                 VerticalAlignment="Center"
                 Background="{DynamicResource DARKPrimaryLighter}"
                 pu:SliderHelper.CoveredBackground="{DynamicResource DARKPrimaryDarker}" />
-        <TextBlock Grid.Row="3" Grid.Column="3" x:Name="SpeedText" 
-                   Text="1.0x" VerticalAlignment="Center" 
+        <TextBlock Grid.Row="3" Grid.Column="3" x:Name="SpeedText"
+                   Text="1.0x" VerticalAlignment="Center"
                    HorizontalAlignment="Center" />
-        
+
         <!-- 缓存开关 -->
         <pu:Switch x:Name="EnableCache" Grid.Row="4" Grid.Column="2"
                    BorderBrush="{DynamicResource DARKPrimaryDark}"
-                   CheckedBackground="{DynamicResource DARKPrimary}" 
+                   CheckedBackground="{DynamicResource DARKPrimary}"
                    CheckedBorderBrush="{DynamicResource DARKPrimary}"
-                   Background="Transparent" BoxWidth="35" BoxHeight="18" 
+                   Background="Transparent" BoxWidth="35" BoxHeight="18"
                    ToggleSize="14" ToggleShadowColor="{x:Null}"
-                   ToggleBrush="{DynamicResource DARKPrimaryDark}" 
+                   ToggleBrush="{DynamicResource DARKPrimaryDark}"
                    Content="{ll:Str 启用缓存}"
                    CheckedToggleBrush="{DynamicResource DARKPrimaryText}" />
-        
+
         <!-- 提供商选择 -->
         <ComboBox x:Name="CombProvider" Grid.Row="5" Grid.Column="2" Grid.ColumnSpan="2"
-                  Style="{DynamicResource StandardComboBoxStyle}" 
+                  Style="{DynamicResource StandardComboBoxStyle}"
                   FontSize="14" Margin="0,5">
             <ComboBoxItem Content="{ll:Str Free TTS（免费）}" Tag="Free" />
             <ComboBoxItem Content="{ll:Str OpenAI TTS}" Tag="OpenAI" />
@@ -107,92 +107,100 @@
             <ComboBoxItem Content="{ll:Str 自定义 URL}" Tag="URL" />
             <ComboBoxItem Content="{ll:Str DIY TTS}" Tag="DIY" />
         </ComboBox>
-        
+
         <!-- 提供商配置区域 -->
-        <Border Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="4" 
-                BorderBrush="{DynamicResource DARKPrimaryDark}" 
-                BorderThickness="1" CornerRadius="5" 
+        <Border Grid.Row="6" Grid.Column="0" Grid.ColumnSpan="4"
+                BorderBrush="{DynamicResource DARKPrimaryDark}"
+                BorderThickness="1" CornerRadius="5"
                 Margin="0,5" Padding="10">
             <StackPanel x:Name="ProviderConfigPanel">
                 <!-- 动态内容将在代码中填充 -->
             </StackPanel>
         </Border>
-        
+
         <!-- 代理设置 -->
         <TextBlock Grid.Row="7" Text="{ll:Str 代理}" VerticalAlignment="Center" FontWeight="Bold" />
         <pu:Switch x:Name="EnableProxy" Grid.Row="7" Grid.Column="2"
                    BorderBrush="{DynamicResource DARKPrimaryDark}"
-                   CheckedBackground="{DynamicResource DARKPrimary}" 
+                   CheckedBackground="{DynamicResource DARKPrimary}"
                    CheckedBorderBrush="{DynamicResource DARKPrimary}"
-                   Background="Transparent" BoxWidth="35" BoxHeight="18" 
+                   Background="Transparent" BoxWidth="35" BoxHeight="18"
                    ToggleSize="14" ToggleShadowColor="{x:Null}"
-                   ToggleBrush="{DynamicResource DARKPrimaryDark}" 
+                   ToggleBrush="{DynamicResource DARKPrimaryDark}"
                    Content="{ll:Str 启用代理}"
                    CheckedToggleBrush="{DynamicResource DARKPrimaryText}" />
-        
+
         <TextBlock Grid.Row="8" Text="{ll:Str 系统代理}" VerticalAlignment="Center" />
         <pu:Switch x:Name="FollowSystemProxy" Grid.Row="8" Grid.Column="2"
                    BorderBrush="{DynamicResource DARKPrimaryDark}"
-                   CheckedBackground="{DynamicResource DARKPrimary}" 
+                   CheckedBackground="{DynamicResource DARKPrimary}"
                    CheckedBorderBrush="{DynamicResource DARKPrimary}"
-                   Background="Transparent" BoxWidth="35" BoxHeight="18" 
+                   Background="Transparent" BoxWidth="35" BoxHeight="18"
                    ToggleSize="14" ToggleShadowColor="{x:Null}"
-                   ToggleBrush="{DynamicResource DARKPrimaryDark}" 
+                   ToggleBrush="{DynamicResource DARKPrimaryDark}"
                    Content="{ll:Str 跟随系统代理}"
                    CheckedToggleBrush="{DynamicResource DARKPrimaryText}" />
-        
+
         <TextBlock Grid.Row="9" Text="{ll:Str 代理地址}" VerticalAlignment="Center" />
         <TextBox x:Name="ProxyAddress" Grid.Row="9" Grid.Column="2" Grid.ColumnSpan="2"
                  Text="127.0.0.1:8080" Margin="0,5" Padding="5,3"
                  VerticalContentAlignment="Center" />
-        
+
         <TextBlock Grid.Row="10" Text="{ll:Str 协议}" VerticalAlignment="Center" />
         <ComboBox x:Name="ProxyProtocol" Grid.Row="10" Grid.Column="2" Grid.ColumnSpan="2"
-                  Style="{DynamicResource StandardComboBoxStyle}" 
+                  Style="{DynamicResource StandardComboBoxStyle}"
                   FontSize="14" Margin="0,5">
             <ComboBoxItem Content="HTTP" Tag="http" />
             <ComboBoxItem Content="HTTPS" Tag="https" />
             <ComboBoxItem Content="SOCKS5" Tag="socks5" />
         </ComboBox>
-        
+
         <!-- 按钮区域 -->
-        <StackPanel Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="4" 
+        <StackPanel Grid.Row="11" Grid.Column="0" Grid.ColumnSpan="4"
                     Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button x:Name="Debug" Content="{ll:Str 调试日志}" 
+            <Button x:Name="BlockedPlugins" Content="{ll:Str 屏蔽其他MOD调用TTS}"
                     pu:ButtonHelper.CornerRadius="4"
                     Background="{DynamicResource DARKPrimary}"
-                    BorderBrush="{DynamicResource DARKPrimaryDark}" 
-                    BorderThickness="2" 
+                    BorderBrush="{DynamicResource DARKPrimaryDark}"
+                    BorderThickness="2"
+                    Foreground="{DynamicResource DARKPrimaryText}"
+                    Margin="5" Padding="15,5"
+                    Click="BlockedPlugins_Click" />
+            <Button x:Name="Debug" Content="{ll:Str 调试日志}"
+                    pu:ButtonHelper.CornerRadius="4"
+                    Background="{DynamicResource DARKPrimary}"
+                    BorderBrush="{DynamicResource DARKPrimaryDark}"
+                    BorderThickness="2"
                     Foreground="{DynamicResource DARKPrimaryText}"
                     Margin="5" Padding="15,5"
                     Click="Debug_Click" />
-            <Button x:Name="Test" Content="{ll:Str 测试}" 
+            <Button x:Name="Test" Content="{ll:Str 测试}"
                     pu:ButtonHelper.CornerRadius="4"
                     Background="{DynamicResource SecondaryLight}"
-                    BorderBrush="{DynamicResource SecondaryDark}" 
-                    BorderThickness="2" 
+                    BorderBrush="{DynamicResource SecondaryDark}"
+                    BorderThickness="2"
                     Margin="5" Padding="15,5"
                     Click="Test_Click" />
-            <Button x:Name="ClearCache" Content="{ll:Str 清理缓存}" 
+            <Button x:Name="ClearCache" Content="{ll:Str 清理缓存}"
                     pu:ButtonHelper.CornerRadius="4"
                     Background="{DynamicResource SecondaryLight}"
-                    BorderBrush="{DynamicResource SecondaryDark}" 
-                    BorderThickness="2" 
+                    BorderBrush="{DynamicResource SecondaryDark}"
+                    BorderThickness="2"
                     Margin="5" Padding="15,5"
                     Click="ClearCache_Click" />
-            <Button x:Name="CleanupExpired" Content="{ll:Str 清理过期}" 
+            <Button x:Name="CleanupExpired" Content="{ll:Str 清理过期}"
                     pu:ButtonHelper.CornerRadius="4"
                     Background="{DynamicResource SecondaryLight}"
-                    BorderBrush="{DynamicResource SecondaryDark}" 
-                    BorderThickness="2" 
+                    BorderBrush="{DynamicResource SecondaryDark}"
+                    BorderThickness="2"
                     Margin="5" Padding="15,5"
                     ToolTip="{ll:Str 清理超过7天未使用的缓存文件}"
                     Click="CleanupExpiredCache_Click" />
-            <Button x:Name="Save" Content="{ll:Str 保存}" 
+            <Button x:Name="Save" Content="{ll:Str 保存}"
                     pu:ButtonHelper.CornerRadius="4"
                     Background="{DynamicResource SecondaryLight}"
-                    BorderBrush="{DynamicResource SecondaryDark}" 
-                    BorderThickness="2" 
+                    BorderBrush="{DynamicResource SecondaryDark}"
+                    BorderThickness="2"
                     Margin="5" Padding="15,5"
                     Click="Save_Click" />
         </StackPanel>

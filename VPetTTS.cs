@@ -99,6 +99,16 @@ namespace Vpet.Plugin.CustomTTS
         private IResourceCleanupService _resourceCleanupService;
 
         /// <summary>
+        /// 启动时异步扫描的插件信息缓存（供设置界面使用）
+        /// </summary>
+        public List<PluginAssemblyScanner.PluginInfo> CachedPluginScanResults { get; private set; }
+
+        /// <summary>
+        /// 云端屏蔽列表服务
+        /// </summary>
+        public CloudBanService CloudBan { get; private set; }
+
+        /// <summary>
         /// 是否使用 mpv 播放器
         /// </summary>
         public bool UseMpvPlayer => _playerManager?.UseMpvPlayer ?? false;
@@ -137,6 +147,23 @@ namespace Vpet.Plugin.CustomTTS
         public void RefreshSoftDisableStatus()
         {
             _pluginDetectionService?.RefreshDetection();
+        }
+
+        /// <summary>
+        /// 更新屏蔽插件列表（供设置窗口保存时调用）
+        /// 合并云端屏蔽 + 本地手动屏蔽，计算有效列表后更新拦截器
+        /// </summary>
+        public void UpdateBlockedPlugins(List<string> localBlockedPlugins)
+        {
+            // 计算有效屏蔽列表（合并云端 + 本地）
+            var effectiveBlocked = CloudBanService.ComputeEffectiveBlockedPlugins(
+                CloudBan?.CloudBannedModIds,
+                Set.CloudBanAllowedMods,
+                localBlockedPlugins,
+                MW.ModInfo);
+
+            SaySourceInterceptor.UpdateBlockedPlugins(effectiveBlocked);
+            LogMessage($"屏蔽插件列表已更新: {(effectiveBlocked.Count > 0 ? string.Join(", ", effectiveBlocked) : "(空)")}");
         }
 
         public VPetTTS(IMainWindow mainwin) : base(mainwin)
@@ -256,6 +283,62 @@ namespace Vpet.Plugin.CustomTTS
             {
                 LogMessage($"检测到其他已启用的 TTS 插件 ({_pluginDetectionService.DetectedOtherPluginNames})，VPetTTS 将在运行时自动跳过（不包括 VPetLLM 内置 TTS）");
             }
+
+            // 初始化 Say 来源拦截器（始终初始化，屏蔽列表为空时补丁不生效）
+            try
+            {
+                SaySourceInterceptor.Initialize(MW, Set.BlockedPlugins ?? new List<string>(), LogMessage);
+                if (Set.BlockedPlugins != null && Set.BlockedPlugins.Count > 0)
+                {
+                    LogMessage($"Say 来源拦截器已启用，屏蔽插件: {string.Join(", ", Set.BlockedPlugins)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Say 来源拦截器初始化失败: {ex.Message}");
+            }
+
+            // 异步获取云端屏蔽列表 + 扫描已安装插件（不阻塞启动）
+            CloudBan = new CloudBanService(LogMessage);
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // 1. 扫描插件
+                    CachedPluginScanResults = PluginAssemblyScanner.ScanPlugins(MW);
+                    LogMessage($"插件扫描完成，发现 {CachedPluginScanResults.Count} 个其他插件");
+
+                    // 2. 获取云端屏蔽列表
+                    var cloudBannedIds = await CloudBan.FetchCloudBanListAsync().ConfigureAwait(false);
+
+                    if (cloudBannedIds.Count > 0)
+                    {
+                        // 3. 标记插件的 IsCloudBanned
+                        foreach (var pluginInfo in CachedPluginScanResults)
+                        {
+                            if (!string.IsNullOrEmpty(pluginInfo.ModId) && CloudBan.IsCloudBanned(pluginInfo.ModId))
+                            {
+                                pluginInfo.IsCloudBanned = true;
+                            }
+                        }
+
+                        // 4. 计算有效屏蔽列表（合并云端 + 本地）
+                        var effectiveBlocked = CloudBanService.ComputeEffectiveBlockedPlugins(
+                            cloudBannedIds,
+                            Set.CloudBanAllowedMods,
+                            Set.BlockedPlugins,
+                            MW.ModInfo);
+
+                        // 5. 更新拦截器
+                        SaySourceInterceptor.UpdateBlockedPlugins(effectiveBlocked);
+                        LogMessage($"云端屏蔽列表已合并，有效屏蔽插件: {(effectiveBlocked.Count > 0 ? string.Join(", ", effectiveBlocked) : "(空)")}");
+                    }
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"云端屏蔽列表获取/合并失败: {ex.Message}");
+                }
+            });
 
             // 通知可用性状态
             _stateManager?.NotifyAvailabilityChanged("插件加载完成");
@@ -451,6 +534,13 @@ namespace Vpet.Plugin.CustomTTS
                 else
                 {
                     LogMessage("Main_OnSay: 软禁用检测通过，继续处理");
+                }
+
+                // 检查消息来源是否被屏蔽
+                if (SaySourceInterceptor.IsBlockedAndRemove(sayInfo, out var blockedSource))
+                {
+                    LogMessage($"Main_OnSay: 消息来自被屏蔽的插件 ({blockedSource})，跳过 TTS");
+                    return;
                 }
 
                 // 获取文本

@@ -1,0 +1,65 @@
+<Window x:Class="Vpet.Plugin.CustomTTS.winBlockedPlugins"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:pu="clr-namespace:Panuon.WPF.UI;assembly=Panuon.WPF.UI"
+        xmlns:ll="clr-namespace:LinePutScript.Localization.WPF;assembly=LinePutScript.Localization.WPF"
+        mc:Ignorable="d"
+        Title="{ll:Str 屏蔽其他MOD的TTS}"
+        Width="420" Height="Auto"
+        MinHeight="250" MaxHeight="500"
+        SizeToContent="Height"
+        ResizeMode="NoResize"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource PrimaryLighter}">
+    <Window.Resources>
+        <ResourceDictionary Source="/VPet-Simulator.Windows.Interface;component/ResourceStyle.xaml" />
+    </Window.Resources>
+
+    <Grid Margin="12">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <!-- 说明文字 -->
+        <TextBlock Grid.Row="0" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Text="{ll:Str 勾选的插件触发的气泡消息将不会生成 TTS 语音。标记为「可调用TTS」的插件引用了 VPet 核心，具备调用 Say 的能力。}" />
+
+        <!-- 插件列表 -->
+        <Border Grid.Row="1"
+                BorderBrush="{DynamicResource DARKPrimaryDark}"
+                BorderThickness="1" CornerRadius="5"
+                Margin="0,0,0,10" Padding="5">
+            <ScrollViewer VerticalScrollBarVisibility="Auto" MaxHeight="300">
+                <StackPanel x:Name="PluginListPanel">
+                    <TextBlock x:Name="LoadingText"
+                               Text="{ll:Str 正在扫描已安装插件...}"
+                               Foreground="Gray" FontStyle="Italic"
+                               Margin="5,8" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <!-- 按钮区域 -->
+        <StackPanel Grid.Row="2" Orientation="Horizontal" HorizontalAlignment="Right">
+            <Button Content="{ll:Str 保存}"
+                    pu:ButtonHelper.CornerRadius="4"
+                    Background="{DynamicResource SecondaryLight}"
+                    BorderBrush="{DynamicResource SecondaryDark}"
+                    BorderThickness="2"
+                    Margin="5" Padding="20,5"
+                    Click="Save_Click" />
+            <Button Content="{ll:Str 取消}"
+                    pu:ButtonHelper.CornerRadius="4"
+                    Background="{DynamicResource DARKPrimary}"
+                    BorderBrush="{DynamicResource DARKPrimaryDark}"
+                    BorderThickness="2"
+                    Foreground="{DynamicResource DARKPrimaryText}"
+                    Margin="5" Padding="20,5"
+                    Click="Cancel_Click" />
+        </StackPanel>
+    </Grid>
+</Window>
