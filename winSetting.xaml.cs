@@ -27,6 +27,9 @@ namespace Vpet.Plugin.CustomTTS
             SpeedSilder.Value = vts.Set.Speed;
             EnableCache.IsChecked = vts.Set.EnableCache;
 
+            // 请求超时
+            TimeoutSlider.Value = vts.Set.RequestTimeout;
+
             // 提供商选择
             foreach (ComboBoxItem item in CombProvider.Items)
             {
@@ -56,7 +59,6 @@ namespace Vpet.Plugin.CustomTTS
                 ProxyProtocol.SelectedIndex = 0;
 
             UpdateProviderConfig();
-            UpdateSpeedText();
 
             // 更新软禁用状态显示
             UpdateSoftDisableStatus();
@@ -108,13 +110,7 @@ namespace Vpet.Plugin.CustomTTS
 
         private void SetupEventHandlers()
         {
-            SpeedSilder.ValueChanged += (s, e) => UpdateSpeedText();
             CombProvider.SelectionChanged += (s, e) => UpdateProviderConfig();
-        }
-
-        private void UpdateSpeedText()
-        {
-            SpeedText.Text = $"{SpeedSilder.Value:F1}x";
         }
 
         private void UpdateProviderConfig()
@@ -418,6 +414,7 @@ namespace Vpet.Plugin.CustomTTS
                 // 保存基本设置
                 vts.Set.Volume = VolumeSilder.Value;
                 vts.Set.Speed = SpeedSilder.Value;
+                vts.Set.RequestTimeout = (int)TimeoutSlider.Value;
                 vts.Set.EnableCache = EnableCache.IsChecked.Value;
 
                 // 保存代理设置

@@ -115,9 +115,10 @@ namespace Vpet.Plugin.CustomTTS.Core
                 handler.Proxy = null;
             }
 
+            var timeoutSeconds = Settings?.RequestTimeout ?? 30;
             return new HttpClient(handler)
             {
-                Timeout = TimeSpan.FromSeconds(30)
+                Timeout = TimeSpan.FromSeconds(timeoutSeconds)
             };
         }
 

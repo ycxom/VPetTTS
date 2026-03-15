@@ -33,6 +33,12 @@ namespace Vpet.Plugin.CustomTTS
         public bool EnableCache { get; set; } = true;
 
         /// <summary>
+        /// 请求超时时间（秒）
+        /// </summary>
+        [Line]
+        public int RequestTimeout { get; set; } = 30;
+
+        /// <summary>
         /// 代理设置
         /// </summary>
         [Line]
@@ -90,6 +96,9 @@ namespace Vpet.Plugin.CustomTTS
             if (Volume > 200) Volume = 200;
             if (Speed < 0.1) Speed = 0.1;
             if (Speed > 3.0) Speed = 3.0;
+
+            if (RequestTimeout < 5) RequestTimeout = 5;
+            if (RequestTimeout > 300) RequestTimeout = 300;
 
             if (string.IsNullOrWhiteSpace(Provider))
                 Provider = "Free";
