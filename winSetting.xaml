@@ -48,6 +48,13 @@
                    Background="#FFF8DC"
                    Visibility="Collapsed" />
 
+        <!-- TTS服务不可用警告 -->
+        <TextBlock x:Name="ServiceUnavailableWarning" Grid.Row="0" Grid.Column="0" Grid.ColumnSpan="4"
+                   Text="" TextWrapping="Wrap"
+                   Foreground="#FFD44444" FontSize="12"
+                   Margin="0,0,0,10" Padding="8"
+                   Visibility="Collapsed" />
+
         <!-- 基本设置 -->
         <TextBlock Grid.Row="1" Text="{ll:Str 启用}" VerticalAlignment="Center" />
         <TextBlock Grid.Row="2" Text="{ll:Str 音量}" VerticalAlignment="Center" />

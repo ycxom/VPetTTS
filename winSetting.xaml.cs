@@ -17,6 +17,9 @@ namespace Vpet.Plugin.CustomTTS
 
             LoadSettings();
             SetupEventHandlers();
+
+            vts.StateChanged += OnTTSStateChanged;
+            Closed += (s, e) => vts.StateChanged -= OnTTSStateChanged;
         }
 
         private void LoadSettings()
@@ -60,8 +63,9 @@ namespace Vpet.Plugin.CustomTTS
 
             UpdateProviderConfig();
 
-            // 更新软禁用状态显示
             UpdateSoftDisableStatus();
+
+            UpdateServiceUnavailableStatus();
         }
 
         /// <summary>
@@ -71,16 +75,13 @@ namespace Vpet.Plugin.CustomTTS
         {
             try
             {
-                // 实时重新检测其他 TTS 插件状态
                 vts.RefreshSoftDisableStatus();
 
-                // 查找软禁用警告文本
                 var warningText = this.FindName("SoftDisableWarning") as TextBlock;
 
                 if (vts.IsSoftDisabled)
                 {
                     var pluginNames = vts.DetectedOtherTTSPluginNames.Translate();
-                    // 使用带占位符的本地化字符串
                     var template = "⚠ 检测到 {0} 插件已启用，TTS 将在运行时自动跳过".Translate();
                     var message = string.Format(template, pluginNames);
 
@@ -108,9 +109,64 @@ namespace Vpet.Plugin.CustomTTS
             }
         }
 
+        private void UpdateServiceUnavailableStatus()
+        {
+            try
+            {
+                var warningText = this.FindName("ServiceUnavailableWarning") as TextBlock;
+                if (warningText is null) return;
+
+                if (vts.TTSState?.HasError == true)
+                {
+                    var isFreeProvider = vts.Set.Provider == "Free";
+                    if (isFreeProvider)
+                    {
+                        warningText.Text = "服务不可用，请检查网络是否正常，可能在维护中".Translate();
+                    }
+                    else
+                    {
+                        warningText.Text = "服务不可用，请检查网络是否正常".Translate();
+                    }
+                    warningText.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    warningText.Visibility = Visibility.Collapsed;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VPetTTS] 更新服务不可用状态显示时发生错误: {ex.Message}");
+            }
+        }
+
+        private void OnTTSStateChanged(object? sender, TTSStateChangedEventArgs e)
+        {
+            try
+            {
+                if (e.PropertyName == "HasError")
+                {
+                    Dispatcher.BeginInvoke(new Action(() =>
+                    {
+                        UpdateServiceUnavailableStatus();
+                    }));
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[VPetTTS] OnTTSStateChanged 处理失败: {ex.Message}");
+            }
+        }
+
         private void SetupEventHandlers()
         {
-            CombProvider.SelectionChanged += (s, e) => UpdateProviderConfig();
+            CombProvider.SelectionChanged += (s, e) =>
+            {
+                var warningText = this.FindName("ServiceUnavailableWarning") as TextBlock;
+                if (warningText is not null)
+                    warningText.Visibility = Visibility.Collapsed;
+                UpdateProviderConfig();
+            };
         }
 
         private void UpdateProviderConfig()
@@ -448,7 +504,6 @@ namespace Vpet.Plugin.CustomTTS
             Test.IsEnabled = false;
             try
             {
-                // 临时应用当前设置进行测试
                 SaveProviderConfig();
                 vts.Set.Volume = VolumeSilder.Value;
                 vts.Set.Speed = SpeedSilder.Value;
@@ -456,11 +511,17 @@ namespace Vpet.Plugin.CustomTTS
                 var success = await vts.TestTTSAsync();
                 if (!success)
                 {
+                    UpdateServiceUnavailableStatus();
                     MessageBoxX.Show("TTS 测试失败，请检查配置".Translate(), "测试失败".Translate());
+                }
+                else
+                {
+                    UpdateServiceUnavailableStatus();
                 }
             }
             catch (Exception ex)
             {
+                UpdateServiceUnavailableStatus();
                 MessageBoxX.Show($"测试失败: {ex.Message}".Translate(), "错误".Translate());
             }
             finally
