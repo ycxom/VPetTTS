@@ -373,7 +373,10 @@ namespace Vpet.Plugin.CustomTTS
         {
             // 停止定时器
             _refreshTimer?.Stop();
-            
+
+            // 关闭时强制落盘最新状态（节流可能跳过了最近一次写入）
+            _stateManager?.SaveState(force: true);
+
             _resourceCleanupService?.OnSystemShutdown();
         }
 

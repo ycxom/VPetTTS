@@ -50,6 +50,11 @@ namespace Vpet.Plugin.CustomTTS.Core
         // 持久化文件路径
         private string _stateFilePath;
 
+        // 持久化节流：避免每条说话完成都同步写磁盘（低状态高频说话时会持续阻塞调用线程）
+        private static readonly TimeSpan _saveThrottle = TimeSpan.FromSeconds(3);
+        private DateTime _lastSaveTime = DateTime.MinValue;
+        private readonly object _saveLock = new object();
+
         #endregion
 
         #region 构造函数
@@ -124,14 +129,21 @@ namespace Vpet.Plugin.CustomTTS.Core
             }
             private set
             {
+                string oldValue = null;
+                bool changed = false;
                 lock (_lockObject)
                 {
                     if (_currentProvider != value)
                     {
-                        var oldValue = _currentProvider;
+                        oldValue = _currentProvider;
                         _currentProvider = value ?? "";
-                        OnStateChanged(nameof(CurrentProvider), oldValue, value);
+                        changed = true;
                     }
+                }
+                // 在锁外触发事件，避免订阅者回调与读属性互相阻塞
+                if (changed)
+                {
+                    OnStateChanged(nameof(CurrentProvider), oldValue, value);
                 }
             }
         }
@@ -147,14 +159,20 @@ namespace Vpet.Plugin.CustomTTS.Core
             }
             private set
             {
+                string oldValue = null;
+                bool changed = false;
                 lock (_lockObject)
                 {
                     if (_currentText != value)
                     {
-                        var oldValue = _currentText;
+                        oldValue = _currentText;
                         _currentText = value ?? "";
-                        OnStateChanged(nameof(CurrentText), oldValue, value);
+                        changed = true;
                     }
+                }
+                if (changed)
+                {
+                    OnStateChanged(nameof(CurrentText), oldValue, value);
                 }
             }
         }
@@ -170,15 +188,22 @@ namespace Vpet.Plugin.CustomTTS.Core
             }
             private set
             {
+                double oldValue = 0;
+                double clampedValue;
+                bool changed = false;
                 lock (_lockObject)
                 {
-                    var clampedValue = Math.Max(0, Math.Min(1, value));
+                    clampedValue = Math.Max(0, Math.Min(1, value));
                     if (Math.Abs(_progress - clampedValue) > 0.001)
                     {
-                        var oldValue = _progress;
+                        oldValue = _progress;
                         _progress = clampedValue;
-                        OnStateChanged(nameof(Progress), oldValue, clampedValue);
+                        changed = true;
                     }
+                }
+                if (changed)
+                {
+                    OnStateChanged(nameof(Progress), oldValue, clampedValue);
                 }
             }
         }
@@ -337,14 +362,20 @@ namespace Vpet.Plugin.CustomTTS.Core
             }
             private set
             {
+                bool oldValue = false;
+                bool changed = false;
                 lock (_lockObject)
                 {
                     if (_hasError != value)
                     {
-                        var oldValue = _hasError;
+                        oldValue = _hasError;
                         _hasError = value;
-                        OnStateChanged(nameof(HasError), oldValue, value);
+                        changed = true;
                     }
+                }
+                if (changed)
+                {
+                    OnStateChanged(nameof(HasError), oldValue, value);
                 }
             }
         }
@@ -640,13 +671,18 @@ namespace Vpet.Plugin.CustomTTS.Core
         /// </summary>
         public void ClearError()
         {
+            bool changed = false;
             lock (_lockObject)
             {
                 if (_hasError)
                 {
                     _hasError = false;
-                    OnStateChanged(nameof(HasError), true, false);
+                    changed = true;
                 }
+            }
+            if (changed)
+            {
+                OnStateChanged(nameof(HasError), true, false);
             }
         }
 
@@ -786,8 +822,22 @@ namespace Vpet.Plugin.CustomTTS.Core
         /// <summary>
         /// 保存状态到文件
         /// </summary>
-        public void SaveState()
+        /// <param name="force">true 时忽略节流并同步写入（用于关闭时确保落盘）</param>
+        public void SaveState(bool force = false)
         {
+            // 节流：非强制写入时，距上次落盘不足间隔则跳过
+            // 仅持久化统计/错误信息，丢失最近一次更新无实质影响
+            lock (_saveLock)
+            {
+                if (!force && DateTime.Now - _lastSaveTime < _saveThrottle)
+                {
+                    return;
+                }
+                _lastSaveTime = DateTime.Now;
+            }
+
+            // 在调用线程上做快照（廉价），实际磁盘写入放到后台线程，避免阻塞说话/播放线程
+            string content;
             try
             {
                 var stateData = new TTSStateData
@@ -803,10 +853,29 @@ namespace Vpet.Plugin.CustomTTS.Core
                     DataVersion = 1
                 };
 
-                var lps = LPSConvert.SerializeObject(stateData, "TTSState");
-                File.WriteAllText(_stateFilePath, lps.ToString());
+                content = LPSConvert.SerializeObject(stateData, "TTSState").ToString();
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"序列化状态失败: {ex.Message}");
+                return;
+            }
 
-                LogMessage("状态已保存到文件");
+            if (force)
+            {
+                WriteStateToDisk(content);
+            }
+            else
+            {
+                Task.Run(() => WriteStateToDisk(content));
+            }
+        }
+
+        private void WriteStateToDisk(string content)
+        {
+            try
+            {
+                File.WriteAllText(_stateFilePath, content);
             }
             catch (Exception ex)
             {
@@ -877,7 +946,7 @@ namespace Vpet.Plugin.CustomTTS.Core
                 _totalErrors = 0;
             }
 
-            SaveState();
+            SaveState(force: true);
             LogMessage("统计信息已重置");
         }
 

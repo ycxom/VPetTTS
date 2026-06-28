@@ -14,6 +14,13 @@ public class PluginDetectionService : IPluginDetectionService
     private OtherTTSPluginDetectionResult _otherTTSPluginDetectionResult;
     private bool _softDisabled = false;
 
+    // ShouldSkipTTS 结果缓存（避免每次说话都做全量反射扫描）
+    // 插件启停极少发生，缓存若干秒足够，且大幅降低低状态高频说话时的开销
+    private static readonly TimeSpan _skipCacheTtl = TimeSpan.FromSeconds(5);
+    private DateTime _skipCacheTime = DateTime.MinValue;
+    private bool _skipCacheValue = false;
+    private readonly object _skipCacheLock = new object();
+
     public PluginDetectionService(IMainWindow mainWindow, string pluginName)
     {
         _mainWindow = mainWindow ?? throw new ArgumentNullException(nameof(mainWindow));
@@ -93,7 +100,16 @@ public class PluginDetectionService : IPluginDetectionService
     {
         try
         {
-            // 重新检测其他 TTS 插件状态（不包括 VPetLLM）
+            // 命中缓存则直接返回，避免每次说话都做全量反射扫描
+            lock (_skipCacheLock)
+            {
+                if (DateTime.Now - _skipCacheTime < _skipCacheTtl)
+                {
+                    return _skipCacheValue;
+                }
+            }
+
+            // 缓存过期，重新检测其他 TTS 插件状态（不包括 VPetLLM）
             var result = OtherTTSPluginDetector.DetectOtherTTSPlugins(_mainWindow, _pluginName);
             var shouldSkip = result.HasOtherEnabledTTSPlugin;
 
@@ -101,6 +117,12 @@ public class PluginDetectionService : IPluginDetectionService
             if (shouldSkip != _softDisabled)
             {
                 _softDisabled = shouldSkip;
+            }
+
+            lock (_skipCacheLock)
+            {
+                _skipCacheValue = shouldSkip;
+                _skipCacheTime = DateTime.Now;
             }
 
             return shouldSkip;
@@ -118,6 +140,12 @@ public class PluginDetectionService : IPluginDetectionService
     {
         DetectVPetLLMPlugin();
         DetectOtherTTSPlugins();
+
+        // 失效 ShouldSkipTTS 缓存，使设置窗口的手动刷新立即生效
+        lock (_skipCacheLock)
+        {
+            _skipCacheTime = DateTime.MinValue;
+        }
     }
 
     /// <summary>

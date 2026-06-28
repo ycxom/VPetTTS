@@ -367,6 +367,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         private static void SayPrefix(object __0)
         {
+            // 热路径：没有任何屏蔽插件时立即返回，避免每次说话都做日志/堆栈分析
+            // （该补丁挂在核心 Say 上，会被所有插件的每一次说话触发）
+            if (_blockedAssemblyMap.IsEmpty) return;
+
             try
             {
                 Log($">>> SayPrefix 触发! 参数类型={__0?.GetType().Name}");
