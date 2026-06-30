@@ -8,6 +8,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
     /// <summary>
     /// 通过 Harmony 补丁拦截 Main.Say/SayRnd 调用，在 Task.Run 之前捕获调用栈，
     /// 识别消息来源插件并标记被屏蔽的 SayInfo。
+    ///
+    /// 来源识别按"被屏蔽 MOD 所在目录里的程序集"进行匹配（而不是按插件显示名做字符串匹配），
+    /// 这样可以同时兼容：
+    ///   1. 多程序集 MOD（主插件 DLL 与实际调用 Say 的 DLL 不是同一个）
+    ///   2. 云端按 Steam ItemID 屏蔽（IModInfo.Name 与 PluginName 不一致也能命中）
+    ///   3. 插件显示名与 MOD 名不一致的情况
     /// </summary>
     public static class SaySourceInterceptor
     {
@@ -15,47 +21,44 @@ namespace Vpet.Plugin.CustomTTS.Utils
         private static bool _initialized;
 
         /// <summary>
-        /// 被屏蔽的 SayInfo → 来源插件名称
+        /// 主窗体引用（用于在更新屏蔽列表时实时解析插件 → 程序集 → MOD 目录）
+        /// </summary>
+        private static IMainWindow _mw;
+
+        /// <summary>
+        /// 被屏蔽的 SayInfo → 来源显示名称
         /// 使用 object key 以避免跨程序集类型不匹配
         /// </summary>
         private static readonly ConcurrentDictionary<object, string> _blockedSayInfos = new();
 
         /// <summary>
-        /// AsyncLocal 用于跨 Task.Run 传递来源插件名称
+        /// AsyncLocal 用于跨 Task.Run 传递来源显示名称（SayRnd 内部会在 Task.Run 中再次调用 Say，
+        /// 此时原始调用栈已丢失，需要靠 AsyncLocal 传播）
         /// </summary>
         private static readonly AsyncLocal<string> _asyncSourcePlugin = new();
 
         /// <summary>
-        /// 屏蔽的插件程序集名称 → 插件名称
+        /// 被屏蔽 MOD 的程序集简单名 → 屏蔽来源显示名（用于命中后记录日志）。
+        /// 这是真正用于拦截判定的数据，由 <see cref="UpdateBlockedPlugins"/> 直接从实时插件/MOD 信息构建，
+        /// 不依赖任何预先缓存的名称映射，避免"映射为空/名称对不上"导致整体失效。
+        /// volatile 引用整体替换，读侧无需加锁。
         /// </summary>
-        private static readonly ConcurrentDictionary<string, string> _blockedAssemblyMap = new();
+        private static volatile Dictionary<string, string> _blockedAssemblies = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
-        /// 所有已加载插件：程序集名称 → 插件名称
+        /// 所有已加载插件：程序集名称 → 插件名称（仅供设置界面展示用）
         /// </summary>
         private static readonly ConcurrentDictionary<string, string> _pluginAssemblyMap = new();
-
-        /// <summary>
-        /// VPet 核心程序集名称前缀（跳过这些程序集）
-        /// </summary>
-        private static readonly string[] _skipAssemblyPrefixes = new[]
-        {
-            "VPet-Simulator",
-            "LinePutScript",
-            "System",
-            "Microsoft",
-            "mscorlib",
-            "netstandard",
-            "WindowsBase",
-            "PresentationCore",
-            "PresentationFramework",
-            "Panuon",
-        };
 
         /// <summary>
         /// VPetTTS 自身程序集名称
         /// </summary>
         private static string _selfAssemblyName;
+
+        /// <summary>
+        /// 已成功应用的补丁数量（诊断用）
+        /// </summary>
+        public static int PatchedMethodCount { get; private set; }
 
         /// <summary>
         /// 日志回调
@@ -67,39 +70,87 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         public static void Initialize(IMainWindow mw, List<string> blockedPlugins, Action<string> logAction = null)
         {
-            if (_initialized) return;
-
             _logAction = logAction;
+            _mw = mw;
             _selfAssemblyName = typeof(SaySourceInterceptor).Assembly.GetName().Name;
 
+            // 即使重复调用（多开/重新加载），也刷新插件映射与屏蔽列表，避免静态状态过期
             BuildPluginAssemblyMap(mw);
             UpdateBlockedPlugins(blockedPlugins);
-            ApplyPatches(mw);
 
-            _initialized = true;
-            Log($"SaySourceInterceptor 初始化完成，屏蔽插件数: {_blockedAssemblyMap.Count}");
+            if (!_initialized)
+            {
+                ApplyPatches(mw);
+                _initialized = true;
+            }
+
+            Log($"SaySourceInterceptor 初始化完成，已打补丁方法: {PatchedMethodCount}，屏蔽程序集数: {_blockedAssemblies.Count}");
         }
 
         /// <summary>
-        /// 更新屏蔽的插件列表（运行时可调用）
+        /// 更新屏蔽列表（运行时可调用）。
+        /// 入参为屏蔽项的"名称"集合：可能是 PluginName、IModInfo.Name，或 Steam ItemID（字符串）。
+        /// 本方法会把这些名称解析为"被屏蔽 MOD 目录下的所有已加载程序集"。
         /// </summary>
         public static void UpdateBlockedPlugins(List<string> blockedPlugins)
         {
-            _blockedAssemblyMap.Clear();
+            var newBlocked = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
-            if (blockedPlugins == null || blockedPlugins.Count == 0) return;
-
-            var blockedSet = new HashSet<string>(blockedPlugins, StringComparer.OrdinalIgnoreCase);
-
-            foreach (var kvp in _pluginAssemblyMap)
+            var blockedSet = new HashSet<string>(blockedPlugins ?? new List<string>(), StringComparer.OrdinalIgnoreCase);
+            if (blockedSet.Count == 0 || _mw?.Plugins == null)
             {
-                if (blockedSet.Contains(kvp.Value))
-                {
-                    _blockedAssemblyMap[kvp.Key] = kvp.Value;
-                }
+                _blockedAssemblies = newBlocked;
+                Log("屏蔽列表已更新: (空)");
+                return;
             }
 
-            Log($"屏蔽列表已更新: {string.Join(", ", _blockedAssemblyMap.Values.Distinct())}");
+            foreach (var plugin in _mw.Plugins)
+            {
+                string pluginName;
+                Assembly pluginAsm;
+                try
+                {
+                    pluginName = plugin.PluginName;
+                    pluginAsm = plugin.GetType().Assembly;
+                }
+                catch
+                {
+                    continue;
+                }
+
+                // 不能屏蔽自己
+                if (string.Equals(pluginAsm.GetName().Name, _selfAssemblyName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+
+                var mod = FindModForAssembly(pluginAsm);
+
+                // 命中条件：屏蔽集合里包含 该插件的 PluginName / 所属 MOD 名 / 所属 Steam ItemID
+                bool isBlocked = blockedSet.Contains(pluginName);
+                string displayName = pluginName;
+                if (!isBlocked && mod != null)
+                {
+                    if (!string.IsNullOrEmpty(mod.Name) && blockedSet.Contains(mod.Name))
+                    {
+                        isBlocked = true;
+                        displayName = mod.Name;
+                    }
+                    else if (mod.ItemID > 0 && blockedSet.Contains(mod.ItemID.ToString()))
+                    {
+                        isBlocked = true;
+                        displayName = string.IsNullOrEmpty(mod.Name) ? pluginName : mod.Name;
+                    }
+                }
+
+                if (!isBlocked) continue;
+
+                // 加入该插件自身程序集
+                newBlocked[pluginAsm.GetName().Name] = displayName;
+                // 多程序集 MOD：把该 MOD 目录下所有已加载程序集都算作屏蔽来源
+                AddAssembliesUnderMod(mod, displayName, newBlocked);
+            }
+
+            _blockedAssemblies = newBlocked;
+            Log($"屏蔽列表已更新: 名称[{string.Join(", ", blockedSet)}] -> 程序集[{string.Join(", ", newBlocked.Keys)}]");
         }
 
         /// <summary>
@@ -131,6 +182,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
         public static int TrackedBlockedCount => _blockedSayInfos.Count;
 
         /// <summary>
+        /// 当前生效的被屏蔽程序集（诊断用）：程序集名 → 来源显示名
+        /// </summary>
+        public static IReadOnlyDictionary<string, string> BlockedAssemblies => _blockedAssemblies;
+
+        /// <summary>
         /// 获取所有已加载插件信息（供设置界面使用）
         /// </summary>
         public static IReadOnlyDictionary<string, string> PluginAssemblyMap => _pluginAssemblyMap;
@@ -142,8 +198,9 @@ namespace Vpet.Plugin.CustomTTS.Utils
         {
             _harmony?.UnpatchAll(_harmony.Id);
             _initialized = false;
+            PatchedMethodCount = 0;
             _blockedSayInfos.Clear();
-            _blockedAssemblyMap.Clear();
+            _blockedAssemblies = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             Log("SaySourceInterceptor 已卸载");
         }
 
@@ -168,6 +225,78 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 {
                     Log($"扫描插件时出错: {ex.Message}");
                 }
+            }
+        }
+
+        /// <summary>
+        /// 根据程序集所在文件路径，定位它属于哪个 MOD（IModInfo.Path 包含该 DLL）
+        /// </summary>
+        private static IModInfo FindModForAssembly(Assembly asm)
+        {
+            try
+            {
+                var loc = SafeGetLocation(asm);
+                if (string.IsNullOrEmpty(loc) || _mw?.ModInfo == null) return null;
+
+                foreach (var mod in _mw.ModInfo)
+                {
+                    try
+                    {
+                        if (IsUnderDirectory(loc, mod?.Path?.FullName))
+                            return mod;
+                    }
+                    catch { /* 跳过无法读取的 mod */ }
+                }
+            }
+            catch { /* ignore */ }
+            return null;
+        }
+
+        /// <summary>
+        /// 将指定 MOD 目录下所有已加载程序集加入屏蔽集合（兼容多 DLL 的 MOD）
+        /// </summary>
+        private static void AddAssembliesUnderMod(IModInfo mod, string displayName, Dictionary<string, string> target)
+        {
+            var root = mod?.Path?.FullName;
+            if (string.IsNullOrEmpty(root)) return;
+
+            foreach (var asm in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                try
+                {
+                    var loc = SafeGetLocation(asm);
+                    if (!IsUnderDirectory(loc, root)) continue;
+
+                    var name = asm.GetName().Name;
+                    if (string.Equals(name, _selfAssemblyName, StringComparison.OrdinalIgnoreCase)) continue;
+                    target[name] = displayName;
+                }
+                catch { /* 动态程序集没有 Location，跳过 */ }
+            }
+        }
+
+        /// <summary>
+        /// 判断文件路径 <paramref name="filePath"/> 是否位于目录 <paramref name="dir"/> 之内
+        /// （按目录边界匹配，避免 "...\VPetLLM" 误命中 "...\VPetLLM2"）
+        /// </summary>
+        private static bool IsUnderDirectory(string filePath, string dir)
+        {
+            if (string.IsNullOrEmpty(filePath) || string.IsNullOrEmpty(dir)) return false;
+            var root = dir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)
+                       + Path.DirectorySeparatorChar;
+            return filePath.StartsWith(root, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string SafeGetLocation(Assembly asm)
+        {
+            try
+            {
+                if (asm.IsDynamic) return null;
+                return asm.Location;
+            }
+            catch
+            {
+                return null;
             }
         }
 
@@ -226,6 +355,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
 
             var patchType = typeof(SaySourceInterceptor);
+            PatchedMethodCount = 0;
 
             // Say(SayInfoWithOutStream)
             PatchByName(mainType, "Say", new[] { "SayInfoWithOutStream" },
@@ -245,7 +375,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 patchType.GetMethod(nameof(SayRndPrefix), BindingFlags.NonPublic | BindingFlags.Static),
                 patchType.GetMethod(nameof(SayRndPostfix), BindingFlags.NonPublic | BindingFlags.Static));
 
-            Log("Harmony 补丁应用完毕");
+            if (PatchedMethodCount == 0)
+                Log("严重警告：没有任何 Say/SayRnd 方法被成功打补丁，来源屏蔽将完全失效！");
+            else
+                Log($"Harmony 补丁应用完毕，成功 {PatchedMethodCount} 个");
         }
 
         private static void PatchByName(Type targetType, string methodName, string[] paramTypeNames,
@@ -264,6 +397,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var postfix = postfixMethod != null ? new HarmonyMethod(postfixMethod) : null;
 
                 _harmony.Patch(original, prefix: prefix, postfix: postfix);
+                PatchedMethodCount++;
                 Log($"已补丁: {methodName}({string.Join(", ", paramTypeNames)})");
             }
             catch (Exception ex)
@@ -273,9 +407,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
         }
 
         /// <summary>
-        /// 从调用栈中识别来源插件
+        /// 从调用栈中识别来源是否为被屏蔽的 MOD。
+        /// 返回非空的屏蔽来源显示名表示命中。
         /// </summary>
-        private static string IdentifySourcePlugin()
+        private static string IdentifyBlockedSource()
         {
             // 先检查 AsyncLocal（来自 SayRnd 的跨 Task.Run 传播）
             var asyncSource = _asyncSourcePlugin.Value;
@@ -284,6 +419,9 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 return asyncSource;
             }
 
+            var blocked = _blockedAssemblies;
+            if (blocked.Count == 0) return null;
+
             var stackTrace = new StackTrace(false);
             var frames = stackTrace.GetFrames();
             if (frames == null) return null;
@@ -291,9 +429,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             for (int i = 0; i < frames.Length; i++)
             {
                 var method = frames[i].GetMethod();
-                if (method == null) continue;
-
-                var declaringType = method.DeclaringType;
+                var declaringType = method?.DeclaringType;
                 if (declaringType == null) continue;
 
                 string asmName;
@@ -306,27 +442,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     continue;
                 }
 
-                if (string.Equals(asmName, _selfAssemblyName, StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                bool skip = false;
-                for (int j = 0; j < _skipAssemblyPrefixes.Length; j++)
+                // 只要调用链中出现被屏蔽 MOD 的任意程序集，即判定为该来源
+                if (blocked.TryGetValue(asmName, out var displayName))
                 {
-                    if (asmName.StartsWith(_skipAssemblyPrefixes[j], StringComparison.OrdinalIgnoreCase))
-                    {
-                        skip = true;
-                        break;
-                    }
-                }
-                if (skip) continue;
-
-                if (asmName.StartsWith("0Harmony", StringComparison.OrdinalIgnoreCase) ||
-                    asmName.StartsWith("HarmonyLib", StringComparison.OrdinalIgnoreCase))
-                    continue;
-
-                if (_pluginAssemblyMap.TryGetValue(asmName, out var pluginName))
-                {
-                    return pluginName;
+                    return displayName;
                 }
             }
 
@@ -334,27 +453,20 @@ namespace Vpet.Plugin.CustomTTS.Utils
         }
 
         /// <summary>
-        /// 检查来源插件是否被屏蔽，如是则标记
+        /// 检查来源是否被屏蔽，如是则标记 SayInfo
         /// </summary>
         private static void CheckAndMarkBlocked(object sayInfo)
         {
-            if (sayInfo == null || _blockedAssemblyMap.IsEmpty) return;
+            if (sayInfo == null || _blockedAssemblies.Count == 0) return;
 
-            var sourcePlugin = IdentifySourcePlugin();
+            var sourcePlugin = IdentifyBlockedSource();
             if (sourcePlugin == null)
             {
-                Log($"Prefix 触发，但未识别到来源插件");
                 return;
             }
 
-            Log($"Prefix 识别到来源插件: {sourcePlugin}");
-
-            if (_blockedAssemblyMap.Values.Any(name =>
-                string.Equals(name, sourcePlugin, StringComparison.OrdinalIgnoreCase)))
-            {
-                _blockedSayInfos[sayInfo] = sourcePlugin;
-                Log($"已标记屏蔽 SayInfo (来源: {sourcePlugin})");
-            }
+            _blockedSayInfos[sayInfo] = sourcePlugin;
+            Log($"已标记屏蔽 SayInfo (来源: {sourcePlugin})");
         }
 
         #endregion
@@ -367,13 +479,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         private static void SayPrefix(object __0)
         {
-            // 热路径：没有任何屏蔽插件时立即返回，避免每次说话都做日志/堆栈分析
+            // 热路径：没有任何屏蔽程序集时立即返回，避免每次说话都做堆栈分析
             // （该补丁挂在核心 Say 上，会被所有插件的每一次说话触发）
-            if (_blockedAssemblyMap.IsEmpty) return;
+            if (_blockedAssemblies.Count == 0) return;
 
             try
             {
-                Log($">>> SayPrefix 触发! 参数类型={__0?.GetType().Name}");
                 CheckAndMarkBlocked(__0);
             }
             catch (Exception ex)
@@ -384,14 +495,16 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
         /// <summary>
         /// SayRnd 方法通用 Prefix
+        /// SayRnd 内部会在 Task.Run 中再次调用 Say，原始调用栈届时已丢失，
+        /// 因此在此处提前识别来源并写入 AsyncLocal，随 ExecutionContext 传播到内部 Say。
         /// </summary>
         private static void SayRndPrefix()
         {
             try
             {
-                if (_blockedAssemblyMap.IsEmpty) return;
+                if (_blockedAssemblies.Count == 0) return;
 
-                var sourcePlugin = IdentifySourcePlugin();
+                var sourcePlugin = IdentifyBlockedSource();
                 if (!string.IsNullOrEmpty(sourcePlugin))
                 {
                     _asyncSourcePlugin.Value = sourcePlugin;

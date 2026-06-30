@@ -62,6 +62,17 @@ namespace Vpet.Plugin.CustomTTS
         /// </summary>
         private DispatcherTimer _refreshTimer;
 
+        /// <summary>
+        /// TTS 处理管线是否就绪（播放器 + 处理服务均已初始化）。
+        /// 在此之前到达的说话（如启动早期、激活的 mod 触发的启动语句）会被缓存，待就绪后补读。
+        /// </summary>
+        private volatile bool _ttsPipelineReady;
+
+        /// <summary>
+        /// 启动早期 TTS 管线尚未就绪时缓存的说话文本（仅保留最近一条，与气泡显示一致）
+        /// </summary>
+        private volatile string _pendingStartupText;
+
         // ==================== 服务层字段 ====================
         /// <summary>
         /// 初始化服务
@@ -176,6 +187,30 @@ namespace Vpet.Plugin.CustomTTS
             Set = LPSConvert.DeserializeObject<Setting>(MW.Set["VPetTTS"]);
             Set?.Validate();
 
+            // ==================== 尽早挂接说话事件 ====================
+            // 关键：在耗时的服务初始化之前就注册 SayProcess 和来源拦截器，
+            // 以便捕获/拦截"刚启动时"激活的 mod 触发的启动语句。
+            // 管线尚未就绪时，Main_OnSay 会把文本缓存到 _pendingStartupText，待就绪后补读。
+
+            // 初始化 Say 来源拦截器（始终初始化，屏蔽列表为空时补丁不生效）
+            try
+            {
+                SaySourceInterceptor.Initialize(MW, Set.BlockedPlugins ?? new List<string>(), LogMessage);
+                if (Set.BlockedPlugins != null && Set.BlockedPlugins.Count > 0)
+                {
+                    LogMessage($"Say 来源拦截器已启用，屏蔽插件: {string.Join(", ", Set.BlockedPlugins)}");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"Say 来源拦截器初始化失败: {ex.Message}");
+            }
+
+            // 如果启用TTS，注册SayProcess事件（尽早注册以捕获启动语句）
+            // 软禁用模式：即使检测到其他插件也注册事件，在运行时检测并跳过
+            if (Set.Enable)
+                MW.Main.SayProcess.Add(Main_OnSay);
+
             // ==================== 创建并初始化服务 ====================
 
             // 1. 初始化服务（负责所有组件的初始化）
@@ -248,6 +283,10 @@ namespace Vpet.Plugin.CustomTTS
                     coordinator.SetTTSProcessingService(_ttsProcessingService);
                     LogMessage("协调器的 TTS 处理服务引用已更新");
                 }
+
+                // 管线就绪：补读启动早期被缓存的说话（启动语句）
+                _ttsPipelineReady = true;
+                FlushPendingStartupSay();
             }
             else
             {
@@ -261,11 +300,6 @@ namespace Vpet.Plugin.CustomTTS
             // 7. 资源清理服务
             _resourceCleanupService = new ResourceCleanupService(_playerManager, _cacheManager, _preloadService, new PlayerErrorHandler());
             LogMessage("资源清理服务初始化完成");
-
-            // 如果启用TTS，注册SayProcess事件
-            // 软禁用模式：即使检测到其他插件也注册事件，在运行时检测并跳过
-            if (Set.Enable)
-                MW.Main.SayProcess.Add(Main_OnSay);
 
             // 添加到MOD配置菜单
             MenuItem modset = MW.Main.ToolBar.MenuMODConfig;
@@ -282,20 +316,6 @@ namespace Vpet.Plugin.CustomTTS
             if (_pluginDetectionService.IsSoftDisabled)
             {
                 LogMessage($"检测到其他已启用的 TTS 插件 ({_pluginDetectionService.DetectedOtherPluginNames})，VPetTTS 将在运行时自动跳过（不包括 VPetLLM 内置 TTS）");
-            }
-
-            // 初始化 Say 来源拦截器（始终初始化，屏蔽列表为空时补丁不生效）
-            try
-            {
-                SaySourceInterceptor.Initialize(MW, Set.BlockedPlugins ?? new List<string>(), LogMessage);
-                if (Set.BlockedPlugins != null && Set.BlockedPlugins.Count > 0)
-                {
-                    LogMessage($"Say 来源拦截器已启用，屏蔽插件: {string.Join(", ", Set.BlockedPlugins)}");
-                }
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"Say 来源拦截器初始化失败: {ex.Message}");
             }
 
             // 异步获取云端屏蔽列表 + 扫描已安装插件（不阻塞启动）
@@ -520,6 +540,14 @@ namespace Vpet.Plugin.CustomTTS
                     return;
                 }
 
+                // 检查消息来源是否被屏蔽（优先判定：被屏蔽来源在任何状态下都不应朗读，
+                // 且无论后续是否提前返回，都要把标记从跟踪字典中移除，避免泄漏）
+                if (SaySourceInterceptor.IsBlockedAndRemove(sayInfo, out var blockedSource))
+                {
+                    LogMessage($"Main_OnSay: 消息来自被屏蔽的插件 ({blockedSource})，跳过 TTS");
+                    return;
+                }
+
                 // 检查是否处于独占会话（文本获取屏蔽）
                 if (_sessionManager != null && !_sessionManager.IsTextCaptureEnabled())
                 {
@@ -539,13 +567,6 @@ namespace Vpet.Plugin.CustomTTS
                     LogMessage("Main_OnSay: 软禁用检测通过，继续处理");
                 }
 
-                // 检查消息来源是否被屏蔽
-                if (SaySourceInterceptor.IsBlockedAndRemove(sayInfo, out var blockedSource))
-                {
-                    LogMessage($"Main_OnSay: 消息来自被屏蔽的插件 ({blockedSource})，跳过 TTS");
-                    return;
-                }
-
                 // 获取文本
                 var saythings = await sayInfo.GetSayText().ConfigureAwait(false);
                 if (string.IsNullOrWhiteSpace(saythings))
@@ -557,7 +578,7 @@ namespace Vpet.Plugin.CustomTTS
                 LogMessage($"Main_OnSay: 处理文本: {saythings.Substring(0, Math.Min(30, saythings.Length))}...");
 
                 // 委托给 TTS 处理服务
-                if (_ttsProcessingService is not null)
+                if (_ttsProcessingService is not null && _ttsPipelineReady)
                 {
                     LogMessage("Main_OnSay: 调用 TTS 处理服务");
                     await _ttsProcessingService.ProcessTTSRequestAsync(saythings);
@@ -565,8 +586,10 @@ namespace Vpet.Plugin.CustomTTS
                 }
                 else
                 {
-                    // TTS 处理服务未初始化（不应该发生，因为现在是同步初始化）
-                    LogMessage($"Main_OnSay: 错误 - TTS 处理服务未初始化");
+                    // 启动早期 TTS 管线尚未就绪：缓存最近一条文本，待就绪后补读，
+                    // 避免漏掉"刚启动时"激活的 mod 触发的启动语句。
+                    _pendingStartupText = saythings;
+                    LogMessage("Main_OnSay: TTS 管线未就绪，缓存启动语句待补读");
                 }
             }
             catch (Exception ex)
@@ -575,6 +598,42 @@ namespace Vpet.Plugin.CustomTTS
                 LogMessage($"Main_OnSay: 堆栈跟踪: {ex.StackTrace}");
                 _stateManager?.SetError($"TTS处理失败: {ex.Message}", ex, TTSOperationStage.Processing);
             }
+        }
+
+        /// <summary>
+        /// 补读启动早期被缓存的说话（启动语句）。
+        /// 在 TTS 管线就绪后调用，确保"刚启动时"激活的 mod 触发的说话也能被合成朗读。
+        /// </summary>
+        private void FlushPendingStartupSay()
+        {
+            var pending = System.Threading.Interlocked.Exchange(ref _pendingStartupText, null);
+            if (string.IsNullOrWhiteSpace(pending))
+                return;
+
+            LogMessage($"补读启动语句: {pending.Substring(0, Math.Min(30, pending.Length))}...");
+
+            _ = Task.Run(async () =>
+            {
+                try
+                {
+                    // 就绪后再次确认是否应让位于其他 TTS 插件
+                    if (_pluginDetectionService?.ShouldSkipTTS() == true)
+                    {
+                        LogMessage("补读启动语句: 检测到其他 TTS 插件已启用，跳过");
+                        return;
+                    }
+
+                    // 确保播放器可用后再补读
+                    await CheckPlayerAvailabilityAsync();
+
+                    if (_ttsProcessingService is not null)
+                        await _ttsProcessingService.ProcessTTSRequestAsync(pending);
+                }
+                catch (Exception ex)
+                {
+                    LogMessage($"补读启动语句失败: {ex.Message}");
+                }
+            });
         }
 
         public override void Setting()
