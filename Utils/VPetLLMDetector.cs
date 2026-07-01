@@ -308,7 +308,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         private static void LogMessage(string message)
         {
-            Console.WriteLine($"[VPetLLMDetector] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[VPetLLMDetector] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
     }
 }

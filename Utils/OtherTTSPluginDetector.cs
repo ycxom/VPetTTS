@@ -74,11 +74,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
                                 if (CheckPluginEnabled(plugin))
                                 {
                                     result.DetectedPlugins.Add(pluginName);
-                                    Console.WriteLine($"[VPetTTS] 检测到其他已启用的 TTS 插件: {pluginName}");
+                                    TTSLogger.Log($"[VPetTTS] 检测到其他已启用的 TTS 插件: {pluginName}");
                                 }
                                 else
                                 {
-                                    Console.WriteLine($"[VPetTTS] 检测到其他 TTS 插件但未启用: {pluginName}");
+                                    TTSLogger.Log($"[VPetTTS] 检测到其他 TTS 插件但未启用: {pluginName}");
                                 }
                                 break;
                             }
@@ -86,13 +86,13 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     }
                     catch (Exception ex)
                     {
-                        Console.WriteLine($"[VPetTTS] 检查插件时发生错误: {ex.Message}");
+                        TTSLogger.Log($"[VPetTTS] 检查插件时发生错误: {ex.Message}");
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VPetTTS] 检测其他 TTS 插件时发生错误: {ex.Message}");
+                TTSLogger.Log($"[VPetTTS] 检测其他 TTS 插件时发生错误: {ex.Message}");
             }
 
             return result;
@@ -140,12 +140,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 }
 
                 // 如果无法获取 Enable 属性，假设插件未启用（保守策略）
-                Console.WriteLine("[VPetTTS] 无法获取 Enable 属性，假设插件未启用");
+                TTSLogger.Log("[VPetTTS] 无法获取 Enable 属性，假设插件未启用");
                 return false;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VPetTTS] 检查插件启用状态时发生错误: {ex.Message}");
+                TTSLogger.Log($"[VPetTTS] 检查插件启用状态时发生错误: {ex.Message}");
                 // 出错时假设插件未启用（保守策略）
                 return false;
             }

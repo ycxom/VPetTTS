@@ -71,7 +71,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
 
         protected override void LogMessage(string message)
         {
-            Console.WriteLine($"[OpenAITTSCore] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[OpenAITTSCore] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
     }
 }

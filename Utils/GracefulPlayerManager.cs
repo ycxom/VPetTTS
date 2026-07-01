@@ -350,7 +350,7 @@ namespace VPet.Plugin.VPetTTS.Utils
         /// </summary>
         private void LogMessage(string message)
         {
-            Console.WriteLine($"[GracefulPlayerManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[GracefulPlayerManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
     }
 

@@ -376,11 +376,11 @@ namespace Vpet.Plugin.CustomTTS
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[VPetTTS] 清理超时会话失败: {ex.Message}");
+                    TTSLogger.Log($"[VPetTTS] 清理超时会话失败: {ex.Message}");
                 }
             };
             _refreshTimer.Start();
-            Console.WriteLine("[VPetTTS] 启动会话超时清理定时器（30秒间隔）");
+            TTSLogger.Log("[VPetTTS] 启动会话超时清理定时器（30秒间隔）");
 
             // 注册应用程序退出事件
             Application.Current.Exit += OnApplicationExit;
@@ -656,7 +656,7 @@ namespace Vpet.Plugin.CustomTTS
         /// </summary>
         public void LogMessage(string message)
         {
-            Console.WriteLine($"[VPetTTS] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[VPetTTS] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
 
         /// <summary>

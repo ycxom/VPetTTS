@@ -135,7 +135,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
 
         protected override void LogMessage(string message)
         {
-            Console.WriteLine($"[GPTSoVITSTTSCore] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[GPTSoVITSTTSCore] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
     }
 }

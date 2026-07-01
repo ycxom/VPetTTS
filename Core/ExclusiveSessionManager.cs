@@ -27,7 +27,7 @@ public class ExclusiveSessionManager
             {
                 if (IsSessionTimedOut())
                 {
-                    Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 检测到超时会话 {_currentSessionId}，自动清理");
+                    TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 检测到超时会话 {_currentSessionId}，自动清理");
                     _currentSessionId = null;
                     _currentOwnerId = null;
                     _requestMap.Clear();
@@ -44,7 +44,7 @@ public class ExclusiveSessionManager
             _lastActivityTime = DateTime.Now;
             _requestMap.Clear();
 
-            Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 启动会话 {_currentSessionId}，所有者: {callerId}");
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 启动会话 {_currentSessionId}，所有者: {callerId}");
             return _currentSessionId;
         }
     }
@@ -61,23 +61,23 @@ public class ExclusiveSessionManager
         {
             if (_currentSessionId == null)
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 没有活跃会话，无法结束");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 没有活跃会话，无法结束");
                 return false;
             }
 
             if (_currentOwnerId != callerId)
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 调用者 {callerId} 不是会话所有者 {_currentOwnerId}");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 调用者 {callerId} 不是会话所有者 {_currentOwnerId}");
                 return false;
             }
 
             if (_currentSessionId != sessionId)
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 会话 ID 不匹配，期望: {_currentSessionId}，实际: {sessionId}");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 会话 ID 不匹配，期望: {_currentSessionId}，实际: {sessionId}");
                 return false;
             }
 
-            Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 结束会话 {_currentSessionId}，清理 {_requestMap.Count} 个请求");
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 结束会话 {_currentSessionId}，清理 {_requestMap.Count} 个请求");
             _currentSessionId = null;
             _currentOwnerId = null;
             _requestMap.Clear();
@@ -174,7 +174,7 @@ public class ExclusiveSessionManager
             _requestMap[requestId] = requestInfo;
             _lastActivityTime = DateTime.Now;
 
-            Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 注册请求 {requestId}，会话: {sessionId}，文本: {text.Substring(0, Math.Min(20, text.Length))}...");
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 注册请求 {requestId}，会话: {sessionId}，文本: {text.Substring(0, Math.Min(20, text.Length))}...");
             return requestId;
         }
     }
@@ -191,26 +191,26 @@ public class ExclusiveSessionManager
         {
             if (_currentSessionId == null)
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，没有活跃会话");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，没有活跃会话");
                 return false;
             }
 
             if (_currentSessionId != sessionId)
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，会话 ID 不匹配");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，会话 ID 不匹配");
                 return false;
             }
 
             if (!_requestMap.ContainsKey(requestId))
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，请求 ID {requestId} 不存在");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，请求 ID {requestId} 不存在");
                 return false;
             }
 
             var requestInfo = _requestMap[requestId];
             if (requestInfo.SessionId != sessionId)
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，请求不属于当前会话");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 验证失败，请求不属于当前会话");
                 return false;
             }
 
@@ -231,7 +231,7 @@ public class ExclusiveSessionManager
                 requestInfo.CompletedTime = DateTime.Now;
                 _lastActivityTime = DateTime.Now;
 
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 标记请求 {requestId} 完成");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 标记请求 {requestId} 完成");
             }
         }
     }
@@ -260,7 +260,7 @@ public class ExclusiveSessionManager
         {
             if (_requestMap.Remove(requestId))
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 注销请求 {requestId}");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 注销请求 {requestId}");
             }
         }
     }
@@ -317,7 +317,7 @@ public class ExclusiveSessionManager
         {
             if (_currentSessionId != null && IsSessionTimedOut())
             {
-                Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 会话 {_currentSessionId} 超时，自动清理");
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 会话 {_currentSessionId} 超时，自动清理");
                 _currentSessionId = null;
                 _currentOwnerId = null;
                 _requestMap.Clear();
@@ -334,7 +334,7 @@ public class ExclusiveSessionManager
         lock (_lockObject)
         {
             _textCaptureEnabled = false;
-            Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 禁用文本获取");
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 禁用文本获取");
         }
     }
 
@@ -346,7 +346,7 @@ public class ExclusiveSessionManager
         lock (_lockObject)
         {
             _textCaptureEnabled = true;
-            Console.WriteLine($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 启用文本获取");
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 启用文本获取");
         }
     }
 

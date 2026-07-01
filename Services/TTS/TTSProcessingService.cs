@@ -79,7 +79,7 @@ public class TTSProcessingService : ITTSProcessingService
             // 如果当前正在播放，等待播放完成
             if (_audioPlaybackService.IsPlaying)
             {
-                Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 检测到正在播放，等待播放完成...");
+                TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 检测到正在播放，等待播放完成...");
                 
                 int maxWaitTime = 30000; // 最多等待30秒
                 int checkInterval = 100;  // 每100ms检查一次
@@ -93,17 +93,17 @@ public class TTSProcessingService : ITTSProcessingService
 
                 if (elapsedTime >= maxWaitTime)
                 {
-                    Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待播放完成超时");
+                    TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待播放完成超时");
                 }
                 else
                 {
-                    Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 播放已完成，等待时间: {elapsedTime}ms");
+                    TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 播放已完成，等待时间: {elapsedTime}ms");
                 }
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待播放完成失败: {ex.Message}");
+            TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待播放完成失败: {ex.Message}");
         }
     }
 

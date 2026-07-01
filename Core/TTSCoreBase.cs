@@ -127,7 +127,7 @@ namespace Vpet.Plugin.CustomTTS.Core
         /// </summary>
         protected virtual void LogMessage(string message)
         {
-            Console.WriteLine($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
+            TTSLogger.Log($"[{DateTime.Now:yyyy-MM-dd HH:mm:ss}] {message}");
         }
     }
 }

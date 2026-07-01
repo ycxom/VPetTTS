@@ -36,25 +36,25 @@ namespace Vpet.Plugin.CustomTTS.Utils
         {
             try
             {
-                Console.WriteLine("FreeConfigManager: 开始初始化TTS配置...");
+                TTSLogger.Log("FreeConfigManager: 开始初始化TTS配置...");
 
                 // 下载版本信息
                 var versionInfo = await DownloadVersionInfoAsync();
                 if (versionInfo is null)
                 {
-                    Console.WriteLine("FreeConfigManager: 无法获取版本信息，使用本地配置");
+                    TTSLogger.Log("FreeConfigManager: 无法获取版本信息，使用本地配置");
                     return File.Exists(GetConfigPath(TTS_CONFIG_NAME));
                 }
 
                 // 检查并更新TTS配置文件
                 bool ttsOk = await CheckAndUpdateConfigAsync(TTS_CONFIG_NAME, versionInfo);
 
-                Console.WriteLine($"FreeConfigManager: TTS配置初始化完成: {ttsOk}");
+                TTSLogger.Log($"FreeConfigManager: TTS配置初始化完成: {ttsOk}");
                 return ttsOk;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 初始化TTS配置异常: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 初始化TTS配置异常: {ex.Message}");
                 return false;
             }
         }
@@ -74,7 +74,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 下载版本信息失败: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 下载版本信息失败: {ex.Message}");
                 return null;
             }
         }
@@ -90,7 +90,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var expectedMd5 = versionInfo["vpetllm"]?[configName.Replace(".json", "")]?.ToString();
                 if (string.IsNullOrEmpty(expectedMd5))
                 {
-                    Console.WriteLine($"FreeConfigManager: 版本信息中未找到 {configName} 的MD5");
+                    TTSLogger.Log($"FreeConfigManager: 版本信息中未找到 {configName} 的MD5");
                     return false;
                 }
 
@@ -99,12 +99,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 // 检查加密文件是否存在
                 if (File.Exists(encryptedPath))
                 {
-                    Console.WriteLine($"FreeConfigManager: TTS配置已是最新 (MD5: {expectedMd5})");
+                    TTSLogger.Log($"FreeConfigManager: TTS配置已是最新 (MD5: {expectedMd5})");
                     return true;
                 }
 
                 // 需要下载新配置
-                Console.WriteLine($"FreeConfigManager: 下载新配置 {configName}...");
+                TTSLogger.Log($"FreeConfigManager: 下载新配置 {configName}...");
                 var configContent = await DownloadConfigAsync(configName);
                 if (string.IsNullOrEmpty(configContent))
                 {
@@ -115,7 +115,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var actualMd5 = CalculateMD5(configContent);
                 if (actualMd5 != expectedMd5)
                 {
-                    Console.WriteLine($"FreeConfigManager: MD5校验失败 - 期望:{expectedMd5}, 实际:{actualMd5}");
+                    TTSLogger.Log($"FreeConfigManager: MD5校验失败 - 期望:{expectedMd5}, 实际:{actualMd5}");
                     return false;
                 }
 
@@ -123,7 +123,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var encryptedContent = EncryptConfig(configContent);
                 File.WriteAllText(encryptedPath, encryptedContent);
 
-                Console.WriteLine($"FreeConfigManager: 配置更新成功，已保存为: {expectedMd5}");
+                TTSLogger.Log($"FreeConfigManager: 配置更新成功，已保存为: {expectedMd5}");
 
                 // 清理旧的TTS加密文件
                 CleanOldEncryptedFiles(expectedMd5, "TTS");
@@ -132,7 +132,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 更新配置 {configName} 失败: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 更新配置 {configName} 失败: {ex.Message}");
                 return false;
             }
         }
@@ -151,7 +151,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 下载配置 {configName} 失败: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 下载配置 {configName} 失败: {ex.Message}");
                 return null;
             }
         }
@@ -194,7 +194,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 解密配置失败: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 解密配置失败: {ex.Message}");
                 return null;
             }
         }
@@ -237,7 +237,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                                 if (configType == "TTS" && model == "vpetllm")
                                 {
                                     File.Delete(file);
-                                    Console.WriteLine($"FreeConfigManager: 清理旧TTS配置文件: {fileName}");
+                                    TTSLogger.Log($"FreeConfigManager: 清理旧TTS配置文件: {fileName}");
                                 }
                             }
                         }
@@ -245,14 +245,14 @@ namespace Vpet.Plugin.CustomTTS.Utils
                         {
                             // 无法解密或解析的文件，可能是损坏的，也删除
                             File.Delete(file);
-                            Console.WriteLine($"FreeConfigManager: 清理无效配置文件: {fileName}");
+                            TTSLogger.Log($"FreeConfigManager: 清理无效配置文件: {fileName}");
                         }
                     }
                 }
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 清理旧文件失败: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 清理旧文件失败: {ex.Message}");
             }
         }
 
@@ -275,7 +275,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 var encryptedFile = FindEncryptedConfigFile(configName);
                 if (string.IsNullOrEmpty(encryptedFile))
                 {
-                    Console.WriteLine($"FreeConfigManager: 未找到 {configName} 的配置文件");
+                    TTSLogger.Log($"FreeConfigManager: 未找到 {configName} 的配置文件");
                     return null;
                 }
 
@@ -285,7 +285,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
                 if (string.IsNullOrEmpty(decryptedContent))
                 {
-                    Console.WriteLine($"FreeConfigManager: 解密配置 {configName} 失败");
+                    TTSLogger.Log($"FreeConfigManager: 解密配置 {configName} 失败");
                     return null;
                 }
 
@@ -293,7 +293,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 读取配置 {configName} 失败: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 读取配置 {configName} 失败: {ex.Message}");
                 return null;
             }
         }
@@ -347,7 +347,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"FreeConfigManager: 查找加密文件失败: {ex.Message}");
+                TTSLogger.Log($"FreeConfigManager: 查找加密文件失败: {ex.Message}");
                 return null;
             }
         }

@@ -812,7 +812,7 @@ namespace Vpet.Plugin.CustomTTS.Core
 
         private void LogMessage(string message)
         {
-            Console.WriteLine($"[TTSStateManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[TTSStateManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
 
         #endregion

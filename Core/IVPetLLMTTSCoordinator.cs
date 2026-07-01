@@ -284,7 +284,7 @@ namespace Vpet.Plugin.CustomTTS.Core
 
         private void LogMessage(string message)
         {
-            Console.WriteLine($"[VPetLLMTTSCoordinator] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[VPetLLMTTSCoordinator] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
 
         // ==================== 独占会话管理实现 ====================

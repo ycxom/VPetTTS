@@ -328,7 +328,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
         private void LogMessage(string message)
         {
-            Console.WriteLine($"[TTSCacheManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[TTSCacheManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
 
         public void Dispose()

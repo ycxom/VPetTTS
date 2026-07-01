@@ -657,7 +657,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Preload
         /// </summary>
         protected virtual void LogMessage(string message)
         {
-            Console.WriteLine($"[PreloadService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[PreloadService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
 
         #endregion

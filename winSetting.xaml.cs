@@ -92,7 +92,7 @@ namespace Vpet.Plugin.CustomTTS
                     }
                     else
                     {
-                        Console.WriteLine($"[VPetTTS] {message}");
+                        TTSLogger.Log($"[VPetTTS] {message}");
                     }
                 }
                 else
@@ -105,7 +105,7 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VPetTTS] 更新软禁用状态显示时发生错误: {ex.Message}");
+                TTSLogger.Log($"[VPetTTS] 更新软禁用状态显示时发生错误: {ex.Message}");
             }
         }
 
@@ -136,7 +136,7 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VPetTTS] 更新服务不可用状态显示时发生错误: {ex.Message}");
+                TTSLogger.Log($"[VPetTTS] 更新服务不可用状态显示时发生错误: {ex.Message}");
             }
         }
 
@@ -154,7 +154,7 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[VPetTTS] OnTTSStateChanged 处理失败: {ex.Message}");
+                TTSLogger.Log($"[VPetTTS] OnTTSStateChanged 处理失败: {ex.Message}");
             }
         }
 

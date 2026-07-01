@@ -11,12 +11,14 @@ namespace Vpet.Plugin.CustomTTS
         private readonly DispatcherTimer _refreshTimer;
         private readonly StringBuilder _logBuffer;
         private readonly object _logLock = new object();
+        private readonly Action<string> _logHandler;
 
         public winDebugLog(VPetTTS plugin)
         {
             InitializeComponent();
             _plugin = plugin ?? throw new ArgumentNullException(nameof(plugin));
             _logBuffer = new StringBuilder();
+            _logHandler = AppendLog;
 
             // 设置定时刷新
             _refreshTimer = new DispatcherTimer
@@ -64,9 +66,14 @@ namespace Vpet.Plugin.CustomTTS
         {
             try
             {
-                // 重定向控制台输出到我们的日志
-                var originalOut = Console.Out;
-                Console.SetOut(new DebugLogWriter(this, originalOut));
+                // 回填内存缓冲区中的历史日志
+                foreach (var line in TTSLogger.GetSnapshot())
+                {
+                    AppendLog(line);
+                }
+
+                // 订阅内部日志器，实时接收新日志（不再重定向 Console，避免日志泄漏到 VPet）
+                TTSLogger.OnLog += _logHandler;
 
                 AppendLog("日志监听已启动");
             }
@@ -250,6 +257,7 @@ namespace Vpet.Plugin.CustomTTS
                 _logBuffer.Clear();
                 txtLog.Text = "";
             }
+            TTSLogger.Clear();
             AppendLog("=== 日志已清空 ===");
         }
 
@@ -476,6 +484,10 @@ namespace Vpet.Plugin.CustomTTS
             try
             {
                 _refreshTimer?.Stop();
+
+                // 取消订阅内部日志器，避免窗口关闭后仍被引用（内存泄漏）
+                TTSLogger.OnLog -= _logHandler;
+
                 AppendLog("调试窗口已关闭");
             }
             catch (Exception ex)
@@ -484,47 +496,6 @@ namespace Vpet.Plugin.CustomTTS
             }
 
             base.OnClosed(e);
-        }
-    }
-
-    /// <summary>
-    /// 调试日志写入器
-    /// </summary>
-    public class DebugLogWriter : TextWriter
-    {
-        private readonly winDebugLog _debugWindow;
-        private readonly TextWriter _originalWriter;
-
-        public DebugLogWriter(winDebugLog debugWindow, TextWriter originalWriter)
-        {
-            _debugWindow = debugWindow;
-            _originalWriter = originalWriter;
-        }
-
-        public override Encoding Encoding => Encoding.UTF8;
-
-        public override void WriteLine(string value)
-        {
-            try
-            {
-                // 写入到原始输出
-                _originalWriter?.WriteLine(value);
-
-                // 写入到调试窗口
-                if (!string.IsNullOrEmpty(value) && value.Contains("[VPetTTS]") || value.Contains("[VPetLLMDetector]") || value.Contains("[MpvPlayer]"))
-                {
-                    _debugWindow?.AppendLog(value);
-                }
-            }
-            catch
-            {
-                // 忽略日志写入错误，避免递归
-            }
-        }
-
-        public override void Write(string value)
-        {
-            _originalWriter?.Write(value);
         }
     }
 }

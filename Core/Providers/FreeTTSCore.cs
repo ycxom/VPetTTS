@@ -184,7 +184,7 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
 
         protected override void LogMessage(string message)
         {
-            Console.WriteLine($"[FreeTTSCore] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[FreeTTSCore] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
     }
 }

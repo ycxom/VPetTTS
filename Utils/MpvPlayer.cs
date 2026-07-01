@@ -419,7 +419,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         private void LogMessage(string message)
         {
-            Console.WriteLine($"[MpvPlayer] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+            TTSLogger.Log($"[MpvPlayer] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
         }
     }
 
