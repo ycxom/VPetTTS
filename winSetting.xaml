@@ -107,6 +107,18 @@
                    Content="{ll:Str 启用缓存}"
                    CheckedToggleBrush="{DynamicResource DARKPrimaryText}" />
 
+        <!-- 偏好内置播放器：语音播放期间宿主自动保持说话动画 -->
+        <pu:Switch x:Name="PreferBuiltInPlayer" Grid.Row="4" Grid.Column="3"
+                   BorderBrush="{DynamicResource DARKPrimaryDark}"
+                   CheckedBackground="{DynamicResource DARKPrimary}"
+                   CheckedBorderBrush="{DynamicResource DARKPrimary}"
+                   Background="Transparent" BoxWidth="35" BoxHeight="18"
+                   ToggleSize="14" ToggleShadowColor="{x:Null}"
+                   ToggleBrush="{DynamicResource DARKPrimaryDark}"
+                   Content="{ll:Str 内置播放器}"
+                   ToolTip="{ll:Str 使用 VPet 内置播放器播放语音，宿主会保持说话动画直到语音结束；关闭则优先使用 mpv（高码率支持）}"
+                   CheckedToggleBrush="{DynamicResource DARKPrimaryText}" />
+
         <!-- 请求超时 -->
         <Slider Grid.Row="5" Grid.Column="2" x:Name="TimeoutSlider"
                 Minimum="5" Maximum="300" Value="30"

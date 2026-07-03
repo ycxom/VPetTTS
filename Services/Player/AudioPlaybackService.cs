@@ -181,8 +181,22 @@ public class AudioPlaybackService : IAudioPlaybackService
             heartbeatCts = new CancellationTokenSource();
             heartbeatTask = StartHeartbeatUpdateAsync(heartbeatCts.Token);
 
-            // 启动播放并等待完成
-            await mpvPlayer.PlayAsync(path);
+            // mpv 播放时用静音占位驱动宿主保持说话动画（与 EdgeTTS 同机制）
+            // 该能力恒开启，无需设置开关：纯增强，无实质代价
+            var holdAnimation = SilentVoiceAnimationHold.Begin(_mainWindow);
+
+            try
+            {
+                // 启动播放并等待完成
+                await mpvPlayer.PlayAsync(path);
+            }
+            finally
+            {
+                if (holdAnimation)
+                {
+                    SilentVoiceAnimationHold.End(_mainWindow);
+                }
+            }
         }
         catch (FileNotFoundException ex)
         {

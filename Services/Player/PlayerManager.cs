@@ -76,6 +76,25 @@ public class PlayerManager : IPlayerManager
                 _playerInitErrors.AddRange(_vpetLLMDetectionResult.DetectionErrors);
             }
 
+            // 用户偏好内置播放器：不初始化 mpv，直接使用 Main.PlayVoice
+            // （宿主在语音播放期间自动保持说话动画和气泡）
+            if (_settings.PreferVPetBuiltInPlayer)
+            {
+                if (_mpvPlayer is not null)
+                {
+                    try { _mpvPlayer.Dispose(); } catch { }
+                }
+                _mpvPlayer = null;
+                _currentPlayerType = PlayerType.VPetBuiltIn;
+                UpdatePlayerStatus();
+
+                if (oldPlayerType != _currentPlayerType)
+                {
+                    OnPlayerChanged(new PlayerChangedEventArgs(oldPlayerType, _currentPlayerType, "用户偏好 VPet 内置播放器"));
+                }
+                return;
+            }
+
             if (_vpetLLMDetectionResult.CanUseMpvPlayer)
             {
                 try
@@ -196,6 +215,12 @@ public class PlayerManager : IPlayerManager
     {
         try
         {
+            // 用户偏好内置播放器时始终返回内置
+            if (_settings.PreferVPetBuiltInPlayer)
+            {
+                return PlayerType.VPetBuiltIn;
+            }
+
             // 如果 mpv 播放器可用，优先使用
             if (_mpvPlayer is not null)
             {

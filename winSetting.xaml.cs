@@ -29,6 +29,7 @@ namespace Vpet.Plugin.CustomTTS
             VolumeSilder.Value = vts.Set.Volume;
             SpeedSilder.Value = vts.Set.Speed;
             EnableCache.IsChecked = vts.Set.EnableCache;
+            PreferBuiltInPlayer.IsChecked = vts.Set.PreferVPetBuiltInPlayer;
 
             // 请求超时
             TimeoutSlider.Value = vts.Set.RequestTimeout;
@@ -472,6 +473,15 @@ namespace Vpet.Plugin.CustomTTS
                 vts.Set.Speed = SpeedSilder.Value;
                 vts.Set.RequestTimeout = (int)TimeoutSlider.Value;
                 vts.Set.EnableCache = EnableCache.IsChecked.Value;
+
+                // 播放器偏好变化时刷新播放器选择
+                var preferBuiltIn = PreferBuiltInPlayer.IsChecked.Value;
+                var playerPreferenceChanged = vts.Set.PreferVPetBuiltInPlayer != preferBuiltIn;
+                vts.Set.PreferVPetBuiltInPlayer = preferBuiltIn;
+                if (playerPreferenceChanged)
+                {
+                    vts.RefreshPlayerDetection();
+                }
 
                 // 保存代理设置
                 vts.Set.Proxy.IsEnabled = EnableProxy.IsChecked.Value;

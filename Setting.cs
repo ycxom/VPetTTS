@@ -33,6 +33,14 @@ namespace Vpet.Plugin.CustomTTS
         public bool EnableCache { get; set; } = true;
 
         /// <summary>
+        /// 偏好 VPet 内置播放器（Main.PlayVoice）。
+        /// 宿主会在语音播放期间自动保持说话动画和气泡（与 EdgeTTS 插件同机制）；
+        /// false = mpv 可用时优先 mpv（高码率支持），mpv 不可用时仍回退内置播放器。
+        /// </summary>
+        [Line]
+        public bool PreferVPetBuiltInPlayer { get; set; } = false;
+
+        /// <summary>
         /// 请求超时时间（秒）
         /// </summary>
         [Line]
