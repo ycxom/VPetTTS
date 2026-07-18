@@ -11,7 +11,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
     public class CloudBanService
     {
         private const string CloudBanUrl = "https://vpetllm.ycxom.com/api/TTS_Ban_Mod_Text.json";
-        private static readonly HttpClient _httpClient = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
+        // 显式禁用代理直连公开 API（HttpClientHandler 默认会静默使用系统代理）
+        private static readonly HttpClient _httpClient = new HttpClient(
+            new HttpClientHandler { UseProxy = false, Proxy = null })
+        { Timeout = TimeSpan.FromSeconds(5) };
 
         private readonly Action<string> _logAction;
 

@@ -110,6 +110,18 @@ namespace Vpet.Plugin.CustomTTS.Core
         }
 
         /// <summary>
+        /// 重新加载 Free TTS 配置（后台配置下载完成后调用）
+        /// </summary>
+        public void ReloadFreeConfig()
+        {
+            if (_providers.TryGetValue("Free", out var provider) && provider is FreeTTSCore freeCore)
+            {
+                freeCore.ReloadConfig();
+                LogMessage("Free TTS 配置已重新加载");
+            }
+        }
+
+        /// <summary>
         /// 刷新设置（在设置更改后调用）
         /// </summary>
         public void RefreshSettings()

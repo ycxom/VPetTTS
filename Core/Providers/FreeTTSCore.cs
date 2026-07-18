@@ -31,6 +31,16 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
             _textLanguage = language ?? "auto";
         }
 
+        /// <summary>
+        /// 重新加载配置。
+        /// 配置文件由后台异步下载（不阻塞插件启动），下载完成后调用此方法热更新，
+        /// 避免首次安装时需要重启才能使用 Free TTS。
+        /// </summary>
+        public void ReloadConfig()
+        {
+            LoadConfig();
+        }
+
         private void LoadConfig()
         {
             try

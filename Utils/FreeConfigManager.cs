@@ -66,7 +66,9 @@ namespace Vpet.Plugin.CustomTTS.Utils
         {
             try
             {
-                using var client = new HttpClient();
+                // 优化：显式禁用代理以直连下载公开配置
+                var handler = new HttpClientHandler { UseProxy = false };
+                using var client = new HttpClient(handler);
                 client.Timeout = TimeSpan.FromSeconds(10);
                 var url = $"{CONFIG_BASE_URL}/{VERSION_FILE}";
                 var response = await client.GetStringAsync(url);
@@ -144,7 +146,9 @@ namespace Vpet.Plugin.CustomTTS.Utils
         {
             try
             {
-                using var client = new HttpClient();
+                // 优化：显式禁用代理以直连下载公开配置
+                var handler = new HttpClientHandler { UseProxy = false };
+                using var client = new HttpClient(handler);
                 client.Timeout = TimeSpan.FromSeconds(10);
                 var url = $"{CONFIG_BASE_URL}/{configName}";
                 return await client.GetStringAsync(url);

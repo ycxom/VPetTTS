@@ -216,41 +216,39 @@ namespace Vpet.Plugin.CustomTTS
             // 1. 初始化服务（负责所有组件的初始化）
             // 注意：InitializationService 会通过反射设置 _stateManager, _ttsCoordinator, _cacheManager, _preloadService
             _initializationService = new InitializationService(MW, Set, this);
-            
-            // 修复：使用后台线程初始化，但等待完成后再继续
-            // 使用 ManualResetEventSlim 避免死锁
-            var initCompleted = new System.Threading.ManualResetEventSlim(false);
-            Exception initException = null;
-            
+
+            // 同步初始化各组件（均为廉价的对象创建/小文件读取，毫秒级完成）。
+            // 唯一耗时的是 Free TTS 配置的网络下载，单独放到后台执行（见下方），
+            // 不再像旧版那样在此阻塞等待最多 10 秒。
+            try
+            {
+                _initializationService.InitializeAuthProviders();
+                _initializationService.InitializeStateManager();
+                _initializationService.InitializeCacheManager();
+                _initializationService.InitializeTTSManager();
+                _initializationService.InitializePreloadService();
+                LogMessage("初始化服务完成");
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"初始化服务失败: {ex.Message}");
+            }
+
+            // 后台刷新 Free TTS 配置（网络下载，不阻塞启动）。
+            // FreeTTSCore 构造时读取的是本地已缓存的配置；下载完成后热重载，
+            // 首次安装无需重启即可使用 Free TTS。
             _ = Task.Run(async () =>
             {
                 try
                 {
-                    await _initializationService.InitializeAllAsync().ConfigureAwait(false);
+                    await _initializationService.InitializeFreeTTSConfigAsync().ConfigureAwait(false);
+                    ttsManager?.ReloadFreeConfig();
                 }
                 catch (Exception ex)
                 {
-                    initException = ex;
-                }
-                finally
-                {
-                    initCompleted.Set();
+                    LogMessage($"Free TTS 配置后台刷新失败: {ex.Message}");
                 }
             });
-            
-            // 等待初始化完成（最多等待 10 秒）
-            if (!initCompleted.Wait(TimeSpan.FromSeconds(10)))
-            {
-                LogMessage("警告：初始化服务超时（10秒），继续加载插件");
-            }
-            else if (initException != null)
-            {
-                LogMessage($"初始化服务失败: {initException.Message}");
-            }
-            else
-            {
-                LogMessage("初始化服务完成");
-            }
 
             // 2. 插件检测服务
             _pluginDetectionService = new PluginDetectionService(MW, PluginName);
