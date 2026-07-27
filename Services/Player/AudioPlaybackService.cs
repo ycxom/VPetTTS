@@ -344,13 +344,86 @@ public class AudioPlaybackService : IAudioPlaybackService
     {
         try
         {
-            // 这里可以使用 TagLib 或其他库来获取音频时长
-            // 暂时返回 -1 表示未知
-            return -1;
+            if (string.IsNullOrEmpty(path) || !File.Exists(path)) return -1;
+
+            var info = new FileInfo(path);
+            if (info.Length <= 0) return -1;
+
+            // WAV（Free/GPT-SoVITS 的默认输出）能从头部精确算出时长，不需要任何第三方库。
+            if (string.Equals(Path.GetExtension(path), ".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                var wavMs = TryGetWavDurationMs(path);
+                if (wavMs > 0) return wavMs;
+            }
+
+            // 其余格式按 128kbps 粗估。宁可给个量级正确的估算，
+            // 也不要返回 -1 ——VPetLLM 拿 -1 无法安排动画时长。
+            var estimated = (long)(info.Length * 8.0 / 128.0);
+            return estimated > 0 ? estimated : -1;
         }
         catch
         {
             return -1;
         }
+    }
+
+    /// <summary>
+    /// 解析 WAV 头得到精确时长：遍历 RIFF 块，用 fmt 的字节率除 data 块大小。
+    /// 解析不出（非 PCM 容器、文件被截断）返回 -1 交给上层估算。
+    /// </summary>
+    private static long TryGetWavDurationMs(string path)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            using var reader = new BinaryReader(fs);
+
+            if (fs.Length < 12) return -1;
+            // 块标识固定是 ASCII，用 ReadBytes 而不是 ReadChars——后者按流的编码解码，
+            // 遇到非 ASCII 字节会多吞字节导致后续偏移全错。
+            if (ReadTag(reader) != "RIFF") return -1;
+            reader.ReadUInt32(); // 整体大小，用不到
+            if (ReadTag(reader) != "WAVE") return -1;
+
+            uint byteRate = 0;
+            while (fs.Position + 8 <= fs.Length)
+            {
+                var chunkId = ReadTag(reader);
+                var chunkSize = reader.ReadUInt32();
+
+                if (chunkId == "fmt ")
+                {
+                    if (chunkSize < 16) return -1;
+                    reader.ReadUInt16(); // audioFormat
+                    reader.ReadUInt16(); // numChannels
+                    reader.ReadUInt32(); // sampleRate
+                    byteRate = reader.ReadUInt32();
+                    // 已读 12 字节，跳过本块剩余部分（blockAlign/bitsPerSample/扩展字段）
+                    fs.Position += chunkSize - 12 + (chunkSize % 2);
+                }
+                else if (chunkId == "data")
+                {
+                    if (byteRate == 0) return -1;
+                    // data 块声明的大小可能超过实际文件（流式写入未回填），取两者较小值。
+                    var actual = Math.Min((long)chunkSize, fs.Length - fs.Position);
+                    if (actual <= 0) return -1;
+                    return (long)(actual * 1000.0 / byteRate);
+                }
+                else
+                {
+                    // 块大小为奇数时有一个填充字节
+                    fs.Position += chunkSize + (chunkSize % 2);
+                }
+            }
+        }
+        catch { }
+        return -1;
+    }
+
+    /// <summary>读取 4 字节的 RIFF 块标识（纯 ASCII）。</summary>
+    private static string ReadTag(BinaryReader reader)
+    {
+        var bytes = reader.ReadBytes(4);
+        return bytes.Length == 4 ? Encoding.ASCII.GetString(bytes) : "";
     }
 }

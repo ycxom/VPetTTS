@@ -557,6 +557,7 @@ namespace Vpet.Plugin.CustomTTS.Core
                 IsPlaybackComplete = true;
                 LastHeartbeatTime = DateTime.Now;
                 IsPlaying = false;
+                ClearPlaybackTiming();
 
                 OnPlaybackCompleted(new TTSPlaybackEventArgs(audioPath, text));
             }
@@ -597,9 +598,23 @@ namespace Vpet.Plugin.CustomTTS.Core
                 IsPlaybackComplete = true;
                 LastHeartbeatTime = DateTime.Now;
                 IsPlaying = false;
+                ClearPlaybackTiming();
 
                 OnPlaybackCompleted(new TTSPlaybackEventArgs(audioPath, text));
             }
+        }
+
+        /// <summary>
+        /// 清除本次播放的时长/结束时间等时序信息。
+        /// 播放结束或出错后必须调用：VPetLLM 的动画控制器直接读 AudioDurationMs 与
+        /// EstimatedPlaybackEndTime 安排说话动画，留着上一次的值会让它按错误的时间收尾
+        /// （请求失败时尤其明显——没有音频，却按上一句的时长把动画挂在那里）。
+        /// </summary>
+        private void ClearPlaybackTiming()
+        {
+            AudioDurationMs = -1;
+            EstimatedPlaybackEndTime = DateTime.MinValue;
+            PlaybackPositionMs = 0;
         }
 
         /// <summary>
@@ -653,6 +668,12 @@ namespace Vpet.Plugin.CustomTTS.Core
             IsProcessing = false;
             IsDownloading = false;
             IsPlaying = false;
+
+            // 出错时同样要清掉时序信息并标记播放已结束，
+            // 否则 VPetLLM 会拿着上一次成功播放的时长继续等一段不存在的语音。
+            ClearPlaybackTiming();
+            PlaybackProgress = 0;
+            IsPlaybackComplete = true;
 
             OnErrorOccurred(new TTSErrorEventArgs(error, exception)
             {
