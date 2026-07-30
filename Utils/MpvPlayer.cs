@@ -166,38 +166,50 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     WorkingDirectory = Path.GetDirectoryName(_mpvExePath)
                 };
 
+                // 本次播放的进程对象。后面全程用这个局部变量而不是 _process 字段：
+                // 字段随时可能被下一次播放替换并释放，await 之后再去读它会踩到
+                // 已释放的对象（ObjectDisposedException）或者别人的进程。
+                Process process;
+
                 lock (_lock)
                 {
-                    _process = new Process { StartInfo = startInfo };
-                    _process.EnableRaisingEvents = true;
-                    _process.Exited += OnProcessExited;
+                    // 先释放上一次播放遗留的进程对象。
+                    // 每次播放都会新建 Process 并覆盖 _process，而原先只有 Dispose()
+                    // （插件卸载时）才会释放，于是桌宠每说一句话就漏一个 Process ——
+                    // 它持有原生进程句柄，且因为重定向了 stdout/stderr 还挂着两个管道流。
+                    ReleaseProcess();
+
+                    process = new Process { StartInfo = startInfo };
+                    process.EnableRaisingEvents = true;
+                    process.Exited += OnProcessExited;
+                    _process = process;
                 }
 
                 // 启动进程
-                var processStarted = _process.Start();
+                var processStarted = process.Start();
                 if (!processStarted)
                 {
                     throw new InvalidOperationException("无法启动 mpv 进程");
                 }
 
-                LogMessage($"mpv 进程已启动 (PID: {_process.Id})");
+                LogMessage($"mpv 进程已启动 (PID: {process.Id})");
 
                 // 启动进程监控
                 StartProcessMonitoring();
 
                 // 等待进程结束
-                await _process.WaitForExitAsync(_cancellationTokenSource.Token);
+                await process.WaitForExitAsync(_cancellationTokenSource.Token);
 
-                LogMessage($"mpv 进程已结束 (退出代码: {_process.ExitCode})");
+                LogMessage($"mpv 进程已结束 (退出代码: {process.ExitCode})");
 
                 // 检查退出代码
-                if (_process.ExitCode != 0)
+                if (process.ExitCode != 0)
                 {
-                    var errorOutput = await _process.StandardError.ReadToEndAsync();
+                    var errorOutput = await process.StandardError.ReadToEndAsync();
                     if (!string.IsNullOrEmpty(errorOutput))
                     {
                         LogMessage($"mpv 错误输出: {errorOutput}");
-                        throw new InvalidOperationException($"mpv 播放失败 (退出代码: {_process.ExitCode}): {errorOutput}");
+                        throw new InvalidOperationException($"mpv 播放失败 (退出代码: {process.ExitCode}): {errorOutput}");
                     }
                 }
             }
@@ -256,6 +268,30 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     LogMessage($"进程监控任务异常: {ex.Message}");
                 }
             }, _cancellationTokenSource.Token);
+        }
+
+        /// <summary>
+        /// 解绑并释放当前的进程对象。调用方须持有 <see cref="_lock"/>。
+        /// 先摘事件再 Dispose，避免已释放的进程还回调到 <see cref="OnProcessExited"/>。
+        /// </summary>
+        private void ReleaseProcess()
+        {
+            if (_process is null)
+                return;
+
+            try
+            {
+                _process.Exited -= OnProcessExited;
+                _process.Dispose();
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"释放进程资源时发生错误: {ex.Message}");
+            }
+            finally
+            {
+                _process = null;
+            }
         }
 
         /// <summary>
@@ -387,19 +423,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 // 释放进程资源
                 lock (_lock)
                 {
-                    if (_process is not null)
-                    {
-                        try
-                        {
-                            _process.Exited -= OnProcessExited;
-                            _process.Dispose();
-                        }
-                        catch (Exception ex)
-                        {
-                            LogMessage($"释放进程资源时发生错误: {ex.Message}");
-                        }
-                        _process = null;
-                    }
+                    ReleaseProcess();
                 }
 
                 // 释放取消令牌

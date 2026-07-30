@@ -88,6 +88,17 @@ namespace Vpet.Plugin.CustomTTS.Core.Preload
                     return errorResult;
                 }
 
+                // 先回收上一批已结束的任务。
+                //
+                // _activeTasks 里的条目原先只有 Dispose()（插件卸载）才会清理，而
+                // CleanupCompletedTasks 虽然实现了却没有任何调用点，于是每次预加载都会
+                // 永久留下一个 PreloadTask —— 它持有整段文本、已完成的 Task，以及一个
+                // 从未 Dispose 的 CancellationTokenSource。
+                //
+                // 放在这里而不是在任务完成时立即移除，是为了让调用方在预加载结束后
+                // 仍能查到一次 GetPreloadStatus；下一次预加载到来时才回收。
+                CleanupCompletedTasks();
+
                 // 检查是否已存在相同的请求
                 if (_activeTasks.ContainsKey(requestId))
                 {

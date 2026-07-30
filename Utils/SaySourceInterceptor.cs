@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Reflection;
 using HarmonyLib;
 
@@ -26,10 +27,17 @@ namespace Vpet.Plugin.CustomTTS.Utils
         private static IMainWindow _mw;
 
         /// <summary>
-        /// 被屏蔽的 SayInfo → 来源显示名称
-        /// 使用 object key 以避免跨程序集类型不匹配
+        /// 被屏蔽的 SayInfo → 来源显示名称。
+        /// 使用 object key 以避免跨程序集类型不匹配。
+        ///
+        /// 这里必须是 <see cref="ConditionalWeakTable{TKey, TValue}"/>（弱引用键）而不是普通字典：
+        /// 打标记发生在 Harmony 补丁里（只要屏蔽列表非空就会执行），而清除只发生在
+        /// <see cref="IsBlockedAndRemove(SayInfo, out string)"/>，后者挂在 Main_OnSay 上、
+        /// 仅当 Set.Enable 为 true 时才被订阅。也就是说「TTS 关闭 + 屏蔽列表非空」时
+        /// 只进不出——用强引用字典的话，每条被屏蔽的发言都会把 SayInfo 永久留在内存里。
+        /// 换成弱引用后，SayInfo 该回收就回收，条目自动消失，不依赖任何一方按时清理。
         /// </summary>
-        private static readonly ConcurrentDictionary<object, string> _blockedSayInfos = new();
+        private static readonly ConditionalWeakTable<object, string> _blockedSayInfos = new();
 
         /// <summary>
         /// AsyncLocal 用于跨 Task.Run 传递来源显示名称（SayRnd 内部会在 Task.Run 中再次调用 Say，
@@ -158,14 +166,20 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         public static bool IsBlockedAndRemove(SayInfo sayInfo, out string sourcePlugin)
         {
-            if (sayInfo == null || _blockedSayInfos.IsEmpty)
+            if (sayInfo == null)
             {
                 sourcePlugin = null;
                 return false;
             }
 
             // 用 object key 查找，兼容跨程序集类型
-            return _blockedSayInfos.TryRemove(sayInfo, out sourcePlugin);
+            if (!_blockedSayInfos.TryGetValue(sayInfo, out sourcePlugin))
+            {
+                return false;
+            }
+
+            _blockedSayInfos.Remove(sayInfo);
+            return true;
         }
 
         /// <summary>
@@ -179,7 +193,22 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// <summary>
         /// 获取当前被跟踪的屏蔽 SayInfo 数量（调试用）
         /// </summary>
-        public static int TrackedBlockedCount => _blockedSayInfos.Count;
+        /// <remarks>
+        /// 弱引用表没有 Count，只能枚举。仅供诊断使用，不要放进热路径。
+        /// 计数本身也是近似值：未被回收但已无人引用的条目仍可能被数进来。
+        /// </remarks>
+        public static int TrackedBlockedCount
+        {
+            get
+            {
+                var count = 0;
+                foreach (var _ in _blockedSayInfos)
+                {
+                    count++;
+                }
+                return count;
+            }
+        }
 
         /// <summary>
         /// 当前生效的被屏蔽程序集（诊断用）：程序集名 → 来源显示名
@@ -465,7 +494,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 return;
             }
 
-            _blockedSayInfos[sayInfo] = sourcePlugin;
+            _blockedSayInfos.AddOrUpdate(sayInfo, sourcePlugin);
             Log($"已标记屏蔽 SayInfo (来源: {sourcePlugin})");
         }
 

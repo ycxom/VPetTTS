@@ -668,6 +668,17 @@ namespace Vpet.Plugin.CustomTTS
 
                 LogMessage($"开始 TTS 测试: {text}");
 
+                // 手动测试必须真的打一次服务器，不能复用预检缓存。
+                //
+                // 预检结论有 120 秒 TTL：服务器曾经不可用时，这两分钟内的每次测试都会在
+                // 预检那一步直接判失败、连请求都不发。用户改完配置、或服务已经恢复，
+                // 点测试却依然失败，等于"服务不可用时反而没法测试是否恢复"。
+                //
+                // 清掉缓存后，本次探测和真实请求的结论会回填同一条目
+                // （见 FreeServiceHealthCheck.ReportOutcome），服务可用即刻反映到状态里。
+                FreeServiceHealthCheck.Invalidate();
+                LogMessage("TTS 测试: 已清除服务可用性缓存，本次将重新探测");
+
                 // 确保使用最佳播放器
                 await CheckPlayerAvailabilityAsync();
                 LogMessage($"测试将使用播放器: {CurrentPlayerType}");
