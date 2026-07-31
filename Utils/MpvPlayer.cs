@@ -417,8 +417,18 @@ namespace Vpet.Plugin.CustomTTS.Utils
             {
                 _disposed = true;
 
-                // 停止播放
-                StopAsync().Wait(5000);
+                // 停止播放。
+                //
+                // 这里过去是 StopAsync().Wait(5000)：Dispose 由 Application.Exit 在 UI 线程上
+                // 调用，而 StopAsync 里 await 之后的续体要回到同一个 UI 线程——UI 线程却正卡在
+                // Wait 上，续体永远排不上，只能干等满 5 秒超时。表现就是每次退出都卡 5 秒。
+                //
+                // Task.Run 把异步流程挪到线程池启动，续体不再需要 UI 线程，正常情况下瞬间返回；
+                // 超时缩到 3 秒，仅作为进程真的杀不掉时的兜底。
+                if (!Task.Run(() => StopAsync()).Wait(TimeSpan.FromSeconds(3)))
+                {
+                    LogMessage("停止 mpv 超时（3 秒），继续释放资源");
+                }
 
                 // 释放进程资源
                 lock (_lock)

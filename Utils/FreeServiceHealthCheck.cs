@@ -111,11 +111,17 @@ namespace Vpet.Plugin.CustomTTS.Utils
         private static async Task<(bool healthy, string reason)> ProbeAsync(
             string host, string apiUrl, IWebProxy? proxy, Action<string>? log)
         {
-            using var handler = new HttpClientHandler();
-            if (proxy is not null) { handler.Proxy = proxy; handler.UseProxy = true; }
-            else { handler.Proxy = null; handler.UseProxy = false; }
-
-            using var client = new HttpClient(handler) { Timeout = ProbeTimeout };
+            // handler（连接池）按代理配置共享。预检和随后的业务请求走同一条链路、
+            // 同一套连接，既省掉一次握手，判断结果也更贴近真实请求。
+            using var client = HttpHandlerPool.CreateClient(
+                () =>
+                {
+                    var handler = new HttpClientHandler();
+                    if (proxy is not null) { handler.Proxy = proxy; handler.UseProxy = true; }
+                    else { handler.Proxy = null; handler.UseProxy = false; }
+                    return handler;
+                },
+                ProbeTimeout);
 
             foreach (var probeUrl in GetProbeUrls(host, apiUrl))
             {

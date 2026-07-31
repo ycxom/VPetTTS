@@ -1,4 +1,4 @@
-using Newtonsoft.Json.Linq;
+﻿using Newtonsoft.Json.Linq;
 using System.Net.Http;
 using System.Security.Cryptography;
 
@@ -66,10 +66,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
         {
             try
             {
-                // 优化：显式禁用代理以直连下载公开配置
-                var handler = new HttpClientHandler { UseProxy = false };
-                using var client = new HttpClient(handler);
-                client.Timeout = TimeSpan.FromSeconds(10);
+                // 优化：显式禁用代理以直连下载公开配置。
+                // handler（连接池）按代理配置共享，这里 Dispose 的只是 HttpClient 壳子。
+                using var client = HttpHandlerPool.CreateClient(
+                    () => new HttpClientHandler { UseProxy = false },
+                    TimeSpan.FromSeconds(10));
                 var url = $"{CONFIG_BASE_URL}/{VERSION_FILE}";
                 var response = await client.GetStringAsync(url);
                 return JObject.Parse(response);
@@ -146,10 +147,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
         {
             try
             {
-                // 优化：显式禁用代理以直连下载公开配置
-                var handler = new HttpClientHandler { UseProxy = false };
-                using var client = new HttpClient(handler);
-                client.Timeout = TimeSpan.FromSeconds(10);
+                // 优化：显式禁用代理以直连下载公开配置。
+                // handler（连接池）按代理配置共享，这里 Dispose 的只是 HttpClient 壳子。
+                using var client = HttpHandlerPool.CreateClient(
+                    () => new HttpClientHandler { UseProxy = false },
+                    TimeSpan.FromSeconds(10));
                 var url = $"{CONFIG_BASE_URL}/{configName}";
                 return await client.GetStringAsync(url);
             }

@@ -101,6 +101,14 @@ namespace Vpet.Plugin.CustomTTS.Core
         /// </summary>
         protected HttpClient CreateHttpClient()
         {
+            var timeoutSeconds = Settings?.RequestTimeout ?? 30;
+            // handler（连接池）按代理配置共享，返回的 HttpClient 仍是独立实例，
+            // 调用方 Dispose 掉的只是这层壳子。
+            return HttpHandlerPool.CreateClient(CreateHandler, TimeSpan.FromSeconds(timeoutSeconds));
+        }
+
+        private HttpClientHandler CreateHandler()
+        {
             var handler = new HttpClientHandler();
             var proxy = GetProxy();
 
@@ -115,11 +123,7 @@ namespace Vpet.Plugin.CustomTTS.Core
                 handler.Proxy = null;
             }
 
-            var timeoutSeconds = Settings?.RequestTimeout ?? 30;
-            return new HttpClient(handler)
-            {
-                Timeout = TimeSpan.FromSeconds(timeoutSeconds)
-            };
+            return handler;
         }
 
         /// <summary>

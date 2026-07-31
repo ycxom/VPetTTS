@@ -392,10 +392,37 @@ namespace Vpet.Plugin.CustomTTS
             // 停止定时器
             _refreshTimer?.Stop();
 
+            // 先关掉自己开的窗口。
+            //
+            // 这些窗口的 HWND 会随 VPet 主窗口销毁被 Win32 连带干掉（绕过 WPF），
+            // 等 Dispatcher.ShutdownFinished 时 WPF 再去 DestroyWindow 就会抛
+            // Win32Exception(1400) 无效窗口句柄。主动 Close() 让 HwndSource 有序释放。
+            CloseOwnedWindows();
+
             // 关闭时强制落盘最新状态（节流可能跳过了最近一次写入）
             _stateManager?.SaveState(force: true);
 
             _resourceCleanupService?.OnSystemShutdown();
+        }
+
+        /// <summary>
+        /// 关闭插件自己开的窗口。退出路径专用，单个窗口关闭失败不能中断后续清理。
+        /// </summary>
+        private void CloseOwnedWindows()
+        {
+            try
+            {
+                if (winSetting is not null)
+                {
+                    // winSetting 关闭时会把它自己开的子窗口（Owner = winSetting）一并带走
+                    winSetting.Dispatcher.Invoke(winSetting.Close);
+                    winSetting = null;
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"关闭设置窗口失败（退出流程继续）: {ex.Message}");
+            }
         }
 
 
