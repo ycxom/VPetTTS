@@ -382,6 +382,31 @@ namespace Vpet.Plugin.CustomTTS
 
             // 注册应用程序退出事件
             Application.Current.Exit += OnApplicationExit;
+
+            // VPet 的退出流程最后是 Environment.Exit(0)，WPF 的 Application.Exit 事件
+            // 压根不会触发 —— 上面那行在正常退出路径上是不生效的。
+            // ProcessExit 才是 Environment.Exit 会走的钩子，清理逻辑挂这里才跑得到。
+            // （系统只给 ProcessExit 约 2 秒，所以里面只做必要的停止动作。）
+            AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+        }
+
+        /// <summary>
+        /// 进程退出事件处理（Environment.Exit 走的是这条路）。
+        ///
+        /// 只做"停声音"这一件事：ProcessExit 的时间预算很紧，
+        /// 而且此时 WPF Dispatcher 可能已经停了，碰 UI 只会抛异常。
+        /// </summary>
+        private void OnProcessExit(object sender, EventArgs e)
+        {
+            try
+            {
+                _refreshTimer?.Stop();
+                _resourceCleanupService?.CleanupPlayerResources();
+            }
+            catch (Exception ex)
+            {
+                TTSLogger.Log($"[VPetTTS] 进程退出清理失败: {ex.Message}");
+            }
         }
 
         /// <summary>

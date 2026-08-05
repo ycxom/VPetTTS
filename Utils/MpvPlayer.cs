@@ -192,6 +192,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     throw new InvalidOperationException("无法启动 mpv 进程");
                 }
 
+                // 挂进 Job：宿主进程无论怎么没的（Environment.Exit / 崩溃 / 强杀），
+                // 系统都会把 mpv 一起收走，不会出现"VPet 退了还在说话"
+                ChildProcessTracker.Track(process);
+
                 LogMessage($"mpv 进程已启动 (PID: {process.Id})");
 
                 // 启动进程监控
@@ -330,68 +334,133 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
         }
 
+        /// <summary>有窗口时留给优雅关闭的时间</summary>
+        private const int GracefulExitMs = 200;
+
+        /// <summary>Kill 之后等待进程真正消失的时间</summary>
+        private const int KillWaitMs = 1000;
+
         /// <summary>
-        /// 停止播放
+        /// 停止播放（同步包装）。
+        /// 与 Dispose 同理走 Task.Run：直接 Wait 一个在 UI 线程上启动的异步方法，
+        /// 续体会排在被 Wait 卡住的 UI 线程上，只能干等到超时。
         /// </summary>
         public void Stop()
         {
-            StopAsync().Wait(5000); // 5秒超时
+            if (!Task.Run(() => StopAsync()).Wait(KillWaitMs + GracefulExitMs))
+            {
+                LogMessage("同步停止超时，进程终止在后台继续");
+            }
         }
 
         /// <summary>
-        /// 异步停止播放
+        /// 异步停止播放。
+        ///
+        /// 顺序很重要：先取消令牌，再去处理进程。
+        /// PlayAsync 等的是 WaitForExitAsync(token)，令牌一取消它当场返回，
+        /// 上层（AudioPlaybackService → TTS 流水线 → VPetLLM 的中断）立刻解阻塞，
+        /// 不用陪着等进程真的死透。
         /// </summary>
         public async Task StopAsync()
         {
+            Process process;
+            CancellationTokenSource cts;
+
+            // 只在锁内取快照并翻状态位 —— 等进程退出是几百毫秒级的阻塞操作，
+            // 放在锁里会把 IsPlaying / GetProcessStatus / PlayAsync 一起拖住
+            lock (_lock)
+            {
+                process = _process;
+                cts = _cancellationTokenSource;
+                _isPlaying = false;
+            }
+
+            try { cts?.Cancel(); }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex) { LogMessage($"取消播放令牌失败: {ex.Message}"); }
+
+            await TerminateProcessAsync(process).ConfigureAwait(false);
+            await WaitForMonitorExitAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// 结束 mpv 进程。
+        ///
+        /// 这里过去是 CloseMainWindow() + WaitForExit(3000)：mpv 是以
+        /// --no-video + CreateNoWindow 启动的，压根没有主窗口，CloseMainWindow()
+        /// 直接返回 false 什么也没做，然后白白等满 3 秒才轮到 Kill() ——
+        /// 每次中断都要卡这 3 秒。没有窗口就直接 Kill，音频进程没有什么状态可保存。
+        /// </summary>
+        private async Task TerminateProcessAsync(Process process)
+        {
+            if (process is null)
+                return;
+
             try
             {
-                lock (_lock)
+                if (process.HasExited)
+                    return;
+
+                LogMessage("正在停止 mpv 进程...");
+
+                // 仅在真的有窗口时（将来若开启视频输出）才走优雅关闭，且只给很短的时间
+                if (process.MainWindowHandle != IntPtr.Zero && process.CloseMainWindow())
                 {
-                    if (_process is not null && !_process.HasExited)
+                    if (await WaitForExitAsync(process, GracefulExitMs).ConfigureAwait(false))
                     {
-                        LogMessage("正在停止 mpv 进程...");
-
-                        try
-                        {
-                            // 尝试优雅地终止进程
-                            _process.CloseMainWindow();
-
-                            // 等待进程退出
-                            if (!_process.WaitForExit(3000))
-                            {
-                                LogMessage("进程未在3秒内退出，强制终止");
-                                _process.Kill();
-                                _process.WaitForExit(2000);
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            LogMessage($"停止进程时发生错误: {ex.Message}");
-                        }
+                        LogMessage("mpv 进程已优雅退出");
+                        return;
                     }
-
-                    _isPlaying = false;
                 }
 
-                // 取消监控任务
-                _cancellationTokenSource?.Cancel();
-
-                if (_processMonitorTask is not null)
+                process.Kill();
+                if (!await WaitForExitAsync(process, KillWaitMs).ConfigureAwait(false))
                 {
-                    try
-                    {
-                        await _processMonitorTask;
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        // 正常取消
-                    }
+                    LogMessage($"mpv 进程未在 {KillWaitMs}ms 内退出");
                 }
+            }
+            catch (InvalidOperationException)
+            {
+                // 进程已经退出或对象已释放，无事可做
             }
             catch (Exception ex)
             {
-                LogMessage($"停止播放时发生错误: {ex.Message}");
+                LogMessage($"停止 mpv 进程时发生错误: {ex.Message}");
             }
+        }
+
+        /// <summary>
+        /// 等待进程退出，超时返回 false（不抛异常）
+        /// </summary>
+        private static async Task<bool> WaitForExitAsync(Process process, int timeoutMs)
+        {
+            using var timeout = new CancellationTokenSource(timeoutMs);
+            try
+            {
+                await process.WaitForExitAsync(timeout.Token).ConfigureAwait(false);
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                return false;
+            }
+            catch (InvalidOperationException)
+            {
+                return true; // 进程已退出
+            }
+        }
+
+        /// <summary>
+        /// 等监控任务收尾。令牌已取消，正常情况下立刻结束；给个上限别把停止流程吊死。
+        /// </summary>
+        private async Task WaitForMonitorExitAsync()
+        {
+            var monitor = _processMonitorTask;
+            if (monitor is null)
+                return;
+
+            // WhenAny 不会因为任务被取消而抛异常，正好用来做有界等待
+            await Task.WhenAny(monitor, Task.Delay(GracefulExitMs)).ConfigureAwait(false);
         }
 
         /// <summary>

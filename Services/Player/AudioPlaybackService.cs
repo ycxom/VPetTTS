@@ -13,6 +13,9 @@ public class AudioPlaybackService : IAudioPlaybackService
 
     private bool _isPlaying = false;
 
+    // 中断标记：内置播放器没有"停"的接口，只能靠这个让等待循环立刻退出
+    private volatile bool _stopRequested = false;
+
     public AudioPlaybackService(
         IPlayerManager playerManager,
         TTSStateManager stateManager,
@@ -65,6 +68,7 @@ public class AudioPlaybackService : IAudioPlaybackService
         catch { }
 
         // 设置播放状态为true（开始播放），包含音频时长信息
+        _stopRequested = false;
         _stateManager?.SetPlayingState(true, normalizedPath, "", audioDurationMs);
         _isPlaying = true;
 
@@ -95,6 +99,16 @@ public class AudioPlaybackService : IAudioPlaybackService
                 }
                 catch (Exception ex)
                 {
+                    // 我们自己停掉的播放不是故障。
+                    // 不拦住的话：Kill 掉 mpv 抛出的异常里带着"mpv""进程""killed"这些词，
+                    // ShouldRetryWithDifferentPlayer 一律判定为 mpv 故障，于是切到内置播放器
+                    // 把这句话重放一遍 —— 用户点的是中断，结果桌宠反而又说了一遍。
+                    if (_stopRequested)
+                    {
+                        TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 播放被主动停止，不做故障回退");
+                        return;
+                    }
+
                     var error = $"播放器 {_playerManager.CurrentPlayerType} 播放失败: {ex.Message}";
 
                     // 使用错误处理器记录详细错误
@@ -126,23 +140,32 @@ public class AudioPlaybackService : IAudioPlaybackService
     }
 
     /// <summary>
-    /// 停止当前播放
+    /// 停止当前播放。
+    ///
+    /// 两条播放路径都要停：mpv 有自己的停止接口；内置播放器（以及 mpv 播放期间用来
+    /// 保持说话动画的静音占位）跑在宿主的 VoicePlayer 上，用 SilentVoiceAnimationHold.End
+    /// 停掉它的 Clock 并复位 PlayingVoice —— 只停 mpv 的话，气泡和说话动画会继续演到超时。
     /// </summary>
     public async Task StopAsync()
     {
+        _stopRequested = true;
+
         try
         {
-            if (_playerManager.UseMpvPlayer)
+            // 不看 UseMpvPlayer：播放中途切换过播放器的话，mpv 进程可能还在放，
+            // 而这个开关已经指向内置播放器了。StopAsync 对没在播的实例是空操作
+            var mpvPlayer = (_playerManager as PlayerManager)?.GetMpvPlayer();
+            if (mpvPlayer is not null)
             {
-                var mpvPlayer = (_playerManager as PlayerManager)?.GetMpvPlayer();
-                if (mpvPlayer is not null)
-                {
-                    await mpvPlayer.StopAsync();
-                }
+                await mpvPlayer.StopAsync();
             }
+
+            // 停掉宿主侧的播放（内置播放器的真实音频 / mpv 期间的静音占位）
+            SilentVoiceAnimationHold.End(_mainWindow);
 
             _isPlaying = false;
             _stateManager?.SetPlayingState(false);
+            TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 播放已停止");
         }
         catch (Exception ex)
         {
@@ -327,8 +350,8 @@ public class AudioPlaybackService : IAudioPlaybackService
             // 给播放器一些时间开始播放
             await Task.Delay(500);
 
-            // 等待播放完成
-            while (_mainWindow.Main.PlayingVoice && elapsedTime < maxWaitTime)
+            // 等待播放完成（被中断时立刻退出，不再等宿主自然播完）
+            while (_mainWindow.Main.PlayingVoice && !_stopRequested && elapsedTime < maxWaitTime)
             {
                 await Task.Delay(checkInterval);
                 elapsedTime += checkInterval;

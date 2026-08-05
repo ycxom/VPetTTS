@@ -16,6 +16,12 @@ public interface ITTSProcessingService
     /// <param name="text">要转换的文本</param>
     Task ProcessTTSRequestAsync(string text);
 
+    /// <summary>
+    /// 中断：停掉正在播放的音频，并让已经在途（正在合成/排队等播放）的请求放弃播放。
+    /// 供 VPetLLM 等调用方在用户点"中断"时调用。
+    /// </summary>
+    Task InterruptAsync();
+
     // ============================================================================
     // 缓存管理
     // ============================================================================

@@ -13,6 +13,9 @@ public class TTSProcessingService : ITTSProcessingService
     private readonly IAudioPlaybackService _audioPlaybackService;
     private readonly Setting _settings;
 
+    // 中断世代：每次中断自增，在途请求发现世代变了就放弃播放
+    private long _interruptGeneration;
+
     public TTSProcessingService(
         TTSManager ttsManager,
         TTSStateManager stateManager,
@@ -39,6 +42,10 @@ public class TTSProcessingService : ITTSProcessingService
             return;
         }
 
+        // 本次请求所属的"中断世代"：中断后世代自增，比对不上说明这条请求已经作废。
+        // 合成一段音频要几秒，中断多半发生在这期间，所以每个播放点前都要重新比对。
+        var generation = Interlocked.Read(ref _interruptGeneration);
+
         try
         {
             // 1. 检查缓存（预加载 + 常规缓存）
@@ -48,17 +55,20 @@ public class TTSProcessingService : ITTSProcessingService
             {
                 // 缓存命中，等待当前播放完成后再播放
                 await WaitForCurrentPlaybackAsync();
+                if (IsInterrupted(generation, text)) return;
                 await _audioPlaybackService.PlayAudioAsync(cachedPath);
                 return;
             }
 
             // 2. 生成音频并缓存
+            if (IsInterrupted(generation, text)) return;
             var audioPath = await GenerateAndCacheAudioAsync(text);
 
             // 3. 等待当前播放完成后再播放音频
             if (!string.IsNullOrEmpty(audioPath))
             {
                 await WaitForCurrentPlaybackAsync();
+                if (IsInterrupted(generation, text)) return;
                 await _audioPlaybackService.PlayAudioAsync(audioPath);
             }
         }
@@ -67,6 +77,37 @@ public class TTSProcessingService : ITTSProcessingService
             _stateManager?.SetError($"TTS 处理失败: {ex.Message}", ex, TTSOperationStage.Processing);
             throw;
         }
+    }
+
+    /// <summary>
+    /// 中断当前 TTS：停播 + 作废所有在途请求。
+    /// </summary>
+    public async Task InterruptAsync()
+    {
+        Interlocked.Increment(ref _interruptGeneration);
+        TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 收到中断请求，停止播放并作废在途请求");
+
+        try
+        {
+            await _audioPlaybackService.StopAsync();
+        }
+        catch (Exception ex)
+        {
+            TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 中断停止播放失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 请求所属世代是否已被中断作废
+    /// </summary>
+    private bool IsInterrupted(long generation, string text)
+    {
+        if (Interlocked.Read(ref _interruptGeneration) == generation)
+            return false;
+
+        var preview = text.Length > 20 ? text.Substring(0, 20) + "..." : text;
+        TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 请求已被中断，放弃播放: {preview}");
+        return true;
     }
 
     /// <summary>

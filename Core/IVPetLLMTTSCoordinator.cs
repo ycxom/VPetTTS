@@ -137,6 +137,15 @@ namespace Vpet.Plugin.CustomTTS.Core
         /// </summary>
         /// <param name="text">文本</param>
         bool IsPreloaded(string text);
+
+        /// <summary>
+        /// 中断当前语音：立即停止播放，作废已提交但还没播出来的请求。
+        ///
+        /// 用户在 VPetLLM 侧点"中断"时调用。会话本身不结束 —— 调用方通常紧接着
+        /// 走正常的 EndExclusiveSessionAsync 收尾。
+        /// </summary>
+        /// <param name="callerId">调用者 ID（仅用于日志）</param>
+        Task InterruptAsync(string callerId);
     }
 
     /// <summary>
@@ -505,6 +514,47 @@ namespace Vpet.Plugin.CustomTTS.Core
             catch
             {
                 return false;
+            }
+        }
+
+        public async Task InterruptAsync(string callerId)
+        {
+            LogMessage($"收到中断请求，调用者: {callerId}");
+
+            try
+            {
+                if (_ttsProcessingService != null)
+                {
+                    await _ttsProcessingService.InterruptAsync();
+                }
+                else
+                {
+                    LogMessage("TTS 处理服务未设置，无法停止播放");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"中断播放失败: {ex.Message}");
+            }
+
+            // 把在途请求全部标记完成：这些请求已经不会再播出来了，
+            // 不标记的话调用方的 IsRequestCompleteAsync 会一直等到超时
+            try
+            {
+                var activeRequests = _sessionManager.GetActiveRequests();
+                foreach (var requestId in activeRequests)
+                {
+                    _sessionManager.MarkRequestComplete(requestId);
+                }
+
+                if (activeRequests.Count > 0)
+                {
+                    LogMessage($"已作废 {activeRequests.Count} 个在途请求");
+                }
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"作废在途请求失败: {ex.Message}");
             }
         }
     }
