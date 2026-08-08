@@ -35,7 +35,7 @@ public class TTSProcessingService : ITTSProcessingService
     /// <summary>
     /// 处理 TTS 请求
     /// </summary>
-    public async Task ProcessTTSRequestAsync(string text)
+    public async Task ProcessTTSRequestAsync(string text, Action<long>? onPlaybackStarted = null)
     {
         if (string.IsNullOrWhiteSpace(text))
         {
@@ -56,7 +56,7 @@ public class TTSProcessingService : ITTSProcessingService
                 // 缓存命中，等待当前播放完成后再播放
                 await WaitForCurrentPlaybackAsync();
                 if (IsInterrupted(generation, text)) return;
-                await _audioPlaybackService.PlayAudioAsync(cachedPath);
+                await _audioPlaybackService.PlayAudioAsync(cachedPath, onPlaybackStarted);
                 return;
             }
 
@@ -69,7 +69,7 @@ public class TTSProcessingService : ITTSProcessingService
             {
                 await WaitForCurrentPlaybackAsync();
                 if (IsInterrupted(generation, text)) return;
-                await _audioPlaybackService.PlayAudioAsync(audioPath);
+                await _audioPlaybackService.PlayAudioAsync(audioPath, onPlaybackStarted);
             }
         }
         catch (Exception ex)

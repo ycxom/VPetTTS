@@ -36,7 +36,7 @@ public class AudioPlaybackService : IAudioPlaybackService
     /// <summary>
     /// 播放音频文件
     /// </summary>
-    public async Task PlayAudioAsync(string path)
+    public async Task PlayAudioAsync(string path, Action<long>? onPlaybackStarted = null)
     {
         if (string.IsNullOrEmpty(path))
         {
@@ -71,6 +71,19 @@ public class AudioPlaybackService : IAudioPlaybackService
         _stopRequested = false;
         _stateManager?.SetPlayingState(true, normalizedPath, "", audioDurationMs);
         _isPlaying = true;
+
+        // 起播通知要在真正拉起播放器之前发：下面 PlayWithXxxAsync 是"播完才返回"的，
+        // 放到后面就永远等到播放结束才通知，气泡会整段落在语音后面。
+        // 这里已经把状态置为播放中，时长也算好了，是语义上最接近"声音开始"的时刻。
+        try
+        {
+            onPlaybackStarted?.Invoke(audioDurationMs);
+        }
+        catch (Exception ex)
+        {
+            // 订阅方（VPetLLM 的气泡显示）出问题不能拖累播放本身
+            TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 起播回调异常: {ex.Message}");
+        }
 
         try
         {

@@ -121,6 +121,22 @@ namespace Vpet.Plugin.CustomTTS.Core
         Task<bool> IsRequestCompleteAsync(string requestId);
 
         /// <summary>
+        /// 等待某个请求的音频真正开始播放。
+        ///
+        /// 这是气泡与语音对齐用的锚点：SubmitTTSAsync 返回时音频还没出声（可能还在合成、
+        /// 或在排队等前一句播完），调用方若此时就显示气泡，字会比声音早上几百毫秒到几秒。
+        /// 等到本方法返回再显示气泡，两者就对齐了。
+        /// </summary>
+        /// <param name="requestId">请求 ID</param>
+        /// <param name="timeoutMs">最长等待时间（毫秒）</param>
+        /// <returns>
+        /// 起播成功返回音频时长（毫秒，未知为 0），调用方可据此决定气泡的打字速度和停留时长；
+        /// 超时、请求不存在、或请求已结束却从未出声（合成失败/被中断）返回 -1，
+        /// 此时调用方应当按文本长度估算，照常把气泡放出来。
+        /// </returns>
+        Task<long> WaitForPlaybackStartAsync(string requestId, int timeoutMs);
+
+        /// <summary>
         /// 检查是否正在处理
         /// </summary>
         bool IsProcessing();
@@ -423,7 +439,9 @@ namespace Vpet.Plugin.CustomTTS.Core
                         try
                         {
                             LogMessage($"[Task.Run] 开始处理 TTS 请求: {requestId}");
-                            await _ttsProcessingService.ProcessTTSRequestAsync(text);
+                            await _ttsProcessingService.ProcessTTSRequestAsync(
+                                text,
+                                durationMs => _sessionManager.MarkRequestPlaybackStarted(requestId, durationMs));
                             LogMessage($"[Task.Run] TTS 请求处理完成: {requestId}");
                             _sessionManager.MarkRequestComplete(requestId);
                             LogMessage($"[Task.Run] 请求已标记完成: {requestId}");
@@ -460,6 +478,25 @@ namespace Vpet.Plugin.CustomTTS.Core
         public async Task<bool> IsRequestCompleteAsync(string requestId)
         {
             return await Task.FromResult(_sessionManager.IsRequestComplete(requestId));
+        }
+
+        public async Task<long> WaitForPlaybackStartAsync(string requestId, int timeoutMs)
+        {
+            try
+            {
+                var durationMs = await _sessionManager.WaitForPlaybackStartAsync(requestId, timeoutMs);
+
+                LogMessage(durationMs >= 0
+                    ? $"请求 {requestId} 已起播，音频时长: {durationMs}ms"
+                    : $"请求 {requestId} 未能起播（超时/合成失败/已中断）");
+
+                return durationMs;
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"等待请求 {requestId} 起播失败: {ex.Message}");
+                return ExclusiveSessionManager.PlaybackNeverStarted;
+            }
         }
 
         public bool IsProcessing()

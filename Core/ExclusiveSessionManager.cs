@@ -30,7 +30,7 @@ public class ExclusiveSessionManager
                     TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 检测到超时会话 {_currentSessionId}，自动清理");
                     _currentSessionId = null;
                     _currentOwnerId = null;
-                    _requestMap.Clear();
+                    ClearRequests();
                     EnableTextCapture();
                 }
                 else
@@ -42,7 +42,7 @@ public class ExclusiveSessionManager
             _currentSessionId = Guid.NewGuid().ToString();
             _currentOwnerId = callerId;
             _lastActivityTime = DateTime.Now;
-            _requestMap.Clear();
+            ClearRequests();
 
             TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 启动会话 {_currentSessionId}，所有者: {callerId}");
             return _currentSessionId;
@@ -80,7 +80,7 @@ public class ExclusiveSessionManager
             TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 结束会话 {_currentSessionId}，清理 {_requestMap.Count} 个请求");
             _currentSessionId = null;
             _currentOwnerId = null;
-            _requestMap.Clear();
+            ClearRequests();
 
             return true;
         }
@@ -223,21 +223,106 @@ public class ExclusiveSessionManager
     /// </summary>
     public void MarkRequestComplete(string requestId)
     {
+        SessionRequestInfo? requestInfo;
+
         lock (_lockObject)
         {
-            if (_requestMap.TryGetValue(requestId, out var requestInfo))
+            if (!_requestMap.TryGetValue(requestId, out requestInfo))
             {
-                requestInfo.IsComplete = true;
-                requestInfo.CompletedTime = DateTime.Now;
-                _lastActivityTime = DateTime.Now;
-
-                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 标记请求 {requestId} 完成");
+                return;
             }
+
+            requestInfo.IsComplete = true;
+            requestInfo.CompletedTime = DateTime.Now;
+            _lastActivityTime = DateTime.Now;
+
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 标记请求 {requestId} 完成");
         }
+
+        // 请求走完了却从没起播（合成失败、被中断、缓存缺失），说明音频不会来了。
+        // 必须把起播等待者放掉，否则 VPetLLM 会一直等到超时才肯把气泡放出来 —— 表现为"没声音也没字"。
+        // 在锁外触发：TrySetResult 会同步跑续体，持锁调用可能与调用方的其它会话操作互等。
+        requestInfo.PlaybackStartedSource.TrySetResult(PlaybackNeverStarted);
     }
 
     /// <summary>
-    /// 检查请求是否完成
+    /// 标记请求的音频已经真正开始播放，并带上音频时长。
+    ///
+    /// 这是气泡与语音对齐的锚点：VPetLLM 等到这个信号才显示气泡，
+    /// 并用 <paramref name="audioDurationMs"/> 决定气泡的打字速度和停留时长。
+    /// </summary>
+    /// <param name="requestId">请求 ID</param>
+    /// <param name="audioDurationMs">音频时长（毫秒），未知时传 0</param>
+    public void MarkRequestPlaybackStarted(string requestId, long audioDurationMs)
+    {
+        SessionRequestInfo? requestInfo;
+
+        lock (_lockObject)
+        {
+            if (!_requestMap.TryGetValue(requestId, out requestInfo))
+            {
+                return;
+            }
+
+            requestInfo.PlaybackStartTime = DateTime.Now;
+            requestInfo.AudioDurationMs = audioDurationMs;
+            _lastActivityTime = DateTime.Now;
+
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 请求 {requestId} 音频起播，时长: {audioDurationMs}ms");
+        }
+
+        requestInfo.PlaybackStartedSource.TrySetResult(Math.Max(0, audioDurationMs));
+    }
+
+    /// <summary>
+    /// 等待某个请求的音频真正起播。
+    /// </summary>
+    /// <param name="requestId">请求 ID</param>
+    /// <param name="timeoutMs">最长等待时间（毫秒）</param>
+    /// <returns>
+    /// 起播成功返回音频时长（毫秒，未知为 0）；
+    /// 请求不存在、超时、或请求已结束却从未起播，返回 <see cref="PlaybackNeverStarted"/>（-1）。
+    /// </returns>
+    public async Task<long> WaitForPlaybackStartAsync(string requestId, int timeoutMs)
+    {
+        SessionRequestInfo? requestInfo;
+
+        lock (_lockObject)
+        {
+            if (!_requestMap.TryGetValue(requestId, out requestInfo))
+            {
+                TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待起播失败：请求 {requestId} 不存在");
+                return PlaybackNeverStarted;
+            }
+        }
+
+        var startedTask = requestInfo.PlaybackStartedSource.Task;
+        if (startedTask.IsCompleted)
+        {
+            return await startedTask;
+        }
+
+        var completed = await Task.WhenAny(startedTask, Task.Delay(timeoutMs));
+        if (completed != startedTask)
+        {
+            TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 等待请求 {requestId} 起播超时 ({timeoutMs}ms)");
+            return PlaybackNeverStarted;
+        }
+
+        return await startedTask;
+    }
+
+    /// <summary>
+    /// <see cref="WaitForPlaybackStartAsync"/> 的哨兵值：音频始终没有播出来。
+    /// </summary>
+    public const long PlaybackNeverStarted = -1;
+
+    /// <summary>
+    /// 检查请求是否完成。
+    ///
+    /// 请求不在表里一律算完成：要么从没注册过，要么已经随会话结束/超时清理被抹掉了 ——
+    /// 两种情况都不会再有人来标记它完成。返回 false 的话调用方会一直轮询到自己的超时
+    /// （默认 60 秒），期间桌宠卡在那一句上不动。
     /// </summary>
     public bool IsRequestComplete(string requestId)
     {
@@ -247,7 +332,7 @@ public class ExclusiveSessionManager
             {
                 return requestInfo.IsComplete;
             }
-            return false;
+            return true;
         }
     }
 
@@ -256,12 +341,33 @@ public class ExclusiveSessionManager
     /// </summary>
     public void UnregisterRequest(string requestId)
     {
+        SessionRequestInfo? removed = null;
+
         lock (_lockObject)
         {
-            if (_requestMap.Remove(requestId))
+            if (_requestMap.TryGetValue(requestId, out removed))
             {
+                _requestMap.Remove(requestId);
                 TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 注销请求 {requestId}");
             }
+        }
+
+        removed?.PlaybackStartedSource.TrySetResult(PlaybackNeverStarted);
+    }
+
+    /// <summary>
+    /// 清空请求表，并放掉所有还挂在起播信号上的等待者。
+    /// 请求随会话一起没了，音频自然不会再来 —— 不放的话调用方要空等到超时。
+    /// 调用方需持有 <see cref="_lockObject"/>。
+    /// </summary>
+    private void ClearRequests()
+    {
+        var pending = _requestMap.Values.ToList();
+        _requestMap.Clear();
+
+        foreach (var request in pending)
+        {
+            request.PlaybackStartedSource.TrySetResult(PlaybackNeverStarted);
         }
     }
 
@@ -320,7 +426,7 @@ public class ExclusiveSessionManager
                 TTSLogger.Log($"[ExclusiveSessionManager] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 会话 {_currentSessionId} 超时，自动清理");
                 _currentSessionId = null;
                 _currentOwnerId = null;
-                _requestMap.Clear();
+                ClearRequests();
                 EnableTextCapture();
             }
         }
@@ -373,4 +479,24 @@ public class SessionRequestInfo
     public DateTime CreatedTime { get; set; }
     public DateTime? CompletedTime { get; set; }
     public bool IsComplete { get; set; }
+
+    /// <summary>
+    /// 音频真正开始播放的时刻；从未起播时为 null
+    /// </summary>
+    public DateTime? PlaybackStartTime { get; set; }
+
+    /// <summary>
+    /// 本次请求音频的时长（毫秒），未知为 0
+    /// </summary>
+    public long AudioDurationMs { get; set; }
+
+    /// <summary>
+    /// 起播信号：起播时置为音频时长，请求结束却没播出来时置为
+    /// <see cref="ExclusiveSessionManager.PlaybackNeverStarted"/>。
+    ///
+    /// 用 RunContinuationsAsynchronously：完成这个源的是播放线程，
+    /// 让等待方的续体在自己的线程上跑，别把气泡显示的开销压回播放路径。
+    /// </summary>
+    public TaskCompletionSource<long> PlaybackStartedSource { get; } =
+        new(TaskCreationOptions.RunContinuationsAsynchronously);
 }

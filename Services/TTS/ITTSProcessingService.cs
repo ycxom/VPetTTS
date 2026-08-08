@@ -14,7 +14,11 @@ public interface ITTSProcessingService
     /// 处理 TTS 请求
     /// </summary>
     /// <param name="text">要转换的文本</param>
-    Task ProcessTTSRequestAsync(string text);
+    /// <param name="onPlaybackStarted">
+    /// 音频真正开始播放时回调，参数为音频时长（毫秒，未知为 -1）。
+    /// 合成失败或被中断时不会触发 —— 调用方据此知道"这句没播出来"。
+    /// </param>
+    Task ProcessTTSRequestAsync(string text, Action<long>? onPlaybackStarted = null);
 
     /// <summary>
     /// 中断：停掉正在播放的音频，并让已经在途（正在合成/排队等播放）的请求放弃播放。
