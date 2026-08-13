@@ -115,13 +115,26 @@ namespace Vpet.Plugin.CustomTTS.Core.Preload
         {
             if (settings.GPTSoVITS is not null)
             {
+                var textLanguage = TTSLanguage.Normalize(
+                    settings.GPTSoVITS.TextLanguage,
+                    TTSLanguage.Chinese);
+                var promptLanguage = TTSLanguage.Normalize(
+                    settings.GPTSoVITS.PromptLanguage,
+                    textLanguage);
+
                 keyBuilder.Append(settings.GPTSoVITS.BaseUrl ?? "");
+                keyBuilder.Append('|');
+                keyBuilder.Append(settings.GPTSoVITS.ApiMode ?? "");
                 keyBuilder.Append('|');
                 keyBuilder.Append(settings.GPTSoVITS.PromptText ?? "");
                 keyBuilder.Append('|');
                 keyBuilder.Append(settings.GPTSoVITS.ReferWavPath ?? "");
                 keyBuilder.Append('|');
-                keyBuilder.Append(settings.GPTSoVITS.TextLanguage ?? "");
+                keyBuilder.Append(textLanguage);
+                keyBuilder.Append('|');
+                keyBuilder.Append(promptLanguage);
+                keyBuilder.Append('|');
+                keyBuilder.Append(settings.GPTSoVITS.Temperature);
                 keyBuilder.Append('|');
                 keyBuilder.Append(settings.GPTSoVITS.Speed);
             }

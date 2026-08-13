@@ -29,6 +29,7 @@
 - 自动播放器检测与切换
 - 代理支持
 - 云端屏蔽插件列表
+- 日语界面本地化与日语语音合成
 
 ## 支持的 TTS 提供商
 
@@ -46,6 +47,12 @@
 2. 启动 VPet，在 MOD 配置菜单中找到 VPetTTS 设置
 3. 选择 TTS 提供商并配置相关参数
 4. 启用 TTS 功能
+
+### 日语支持
+
+- 界面：当 VPet 使用日语界面时，插件会自动加载 `1102_VPetTTS/lang/ja.lps`。
+- Free TTS：将 `TextLanguage` 设为 `"ja"`（或在设置界面选择“日语”）；`"auto"` 仍可自动检测文本语言。
+- GPT-SoVITS：将 `TextLanguage` 设为 `"ja"` 可合成日语文本。`PromptLanguage` 表示参考音频提示文本的语言；日语提示文本使用 `"ja"`，若提示文本是其他语言，则应填写对应语言码。
 
 ## API 接口文档
 
@@ -441,7 +448,7 @@ TTS 缓存管理器，实现基于最后访问时间的自动清理策略。
 
 | 属性 | 类型 | 默认值 | 说明 |
 |------|------|--------|------|
-| `TextLanguage` | `string` | `"auto"` | 文本语言 (auto/zh/en/ja/yue/ko) |
+| `TextLanguage` | `string` | `"auto"` | 文本语言代码 (`auto`/`zh`/`en`/`ja`/`yue`/`ko`)，日语使用 `ja` |
 
 ### OpenAITTSSetting OpenAI TTS 设置
 
@@ -462,7 +469,8 @@ TTS 缓存管理器，实现基于最后访问时间的自动清理策略。
 | `ModelName` | `string` | `""` | 模型名称 |
 | `ReferWavPath` | `string` | `""` | 参考音频路径 |
 | `PromptText` | `string` | `""` | 提示文本 |
-| `TextLanguage` | `string` | `"中文"` | 文本语言 |
+| `TextLanguage` | `string` | `"zh"` | 待合成文本的语言代码，日语使用 `ja` |
+| `PromptLanguage` | `string` | `"zh"` | 参考音频提示文本的语言代码，日语使用 `ja` |
 | `Temperature` | `double` | `1.0` | 温度 |
 | `Speed` | `double` | `1.0` | 语速 |
 

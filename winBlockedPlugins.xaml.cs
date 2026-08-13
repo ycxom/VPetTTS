@@ -200,7 +200,8 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                MessageBoxX.Show($"保存失败: {ex.Message}".Translate(), "错误".Translate());
+                var message = string.Format("保存失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
             }
         }
 

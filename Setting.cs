@@ -110,6 +110,83 @@ namespace Vpet.Plugin.CustomTTS
 
             if (string.IsNullOrWhiteSpace(Provider))
                 Provider = "Free";
+
+            Free ??= new FreeTTSSetting();
+            Free.TextLanguage = TTSLanguage.Normalize(Free.TextLanguage);
+
+            GPTSoVITS ??= new GPTSoVITSTTSSetting();
+            GPTSoVITS.TextLanguage = TTSLanguage.Normalize(GPTSoVITS.TextLanguage, TTSLanguage.Chinese);
+            GPTSoVITS.PromptLanguage = TTSLanguage.Normalize(
+                GPTSoVITS.PromptLanguage,
+                GPTSoVITS.TextLanguage);
+        }
+    }
+
+    /// <summary>
+    /// TTS 内部统一使用的语言代码及旧配置兼容转换。
+    /// 提供商如需不同格式，应在各自的请求适配层中转换。
+    /// </summary>
+    public static class TTSLanguage
+    {
+        public const string Auto = "auto";
+        public const string Chinese = "zh";
+        public const string English = "en";
+        public const string Japanese = "ja";
+        public const string Cantonese = "yue";
+        public const string Korean = "ko";
+
+        private static readonly Dictionary<string, string> LanguageOptions = new()
+        {
+            { Auto, "自动检测" },
+            { Chinese, "中文" },
+            { English, "英语" },
+            { Japanese, "日语" },
+            { Cantonese, "粤语" },
+            { Korean, "韩语" }
+        };
+
+        /// <summary>
+        /// 可供设置界面和提供商复用的语言选项。
+        /// </summary>
+        public static IReadOnlyDictionary<string, string> SupportedLanguages => LanguageOptions;
+
+        /// <summary>
+        /// 将旧版显示名称、常见别名和区域语言代码归一化为内部语言代码。
+        /// 未知值回退到 <paramref name="fallback"/>，回退值无效时使用 auto。
+        /// </summary>
+        public static string Normalize(string language, string fallback = Auto)
+        {
+            var normalizedFallback = NormalizeKnownLanguage(fallback) ?? Auto;
+            return NormalizeKnownLanguage(language) ?? normalizedFallback;
+        }
+
+        private static string NormalizeKnownLanguage(string language)
+        {
+            if (string.IsNullOrWhiteSpace(language))
+                return null;
+
+            var value = language.Trim().Replace('_', '-').ToLowerInvariant();
+            var exactMatch = value switch
+            {
+                "auto" or "auto-detect" or "autodetect" or "自动" or "自动检测" or "自動" or "自動檢測" or "多语种混合" or "多語種混合" => Auto,
+                "zh" or "cn" or "all-zh" or "all_zh" or "chinese" or "中文" or "汉语" or "漢語" or "普通话" or "普通話" or "中英混合" => Chinese,
+                "en" or "english" or "英文" or "英语" or "英語" => English,
+                "ja" or "jp" or "all-ja" or "all_ja" or "japanese" or "日文" or "日语" or "日語" or "日本語" or "日英混合" => Japanese,
+                "yue" or "zh-yue" or "all-yue" or "all_yue" or "cantonese" or "粤语" or "粵語" or "粤英混合" or "粵英混合" => Cantonese,
+                "ko" or "kr" or "all-ko" or "all_ko" or "korean" or "韩语" or "韓語" or "한국어" or "韩英混合" or "韓英混合" => Korean,
+                _ => null
+            };
+
+            if (exactMatch is not null)
+                return exactMatch;
+
+            if (value.StartsWith("ja-", StringComparison.Ordinal)) return Japanese;
+            if (value.StartsWith("en-", StringComparison.Ordinal)) return English;
+            if (value.StartsWith("ko-", StringComparison.Ordinal)) return Korean;
+            if (value.StartsWith("yue-", StringComparison.Ordinal)) return Cantonese;
+            if (value.StartsWith("zh-", StringComparison.Ordinal)) return Chinese;
+
+            return null;
         }
     }
 
@@ -141,15 +218,8 @@ namespace Vpet.Plugin.CustomTTS
         /// <summary>
         /// 获取支持的语言列表
         /// </summary>
-        public static Dictionary<string, string> SupportedLanguages => new Dictionary<string, string>
-        {
-            { "auto", "自动检测" },
-            { "zh", "中文" },
-            { "en", "英语" },
-            { "ja", "日语" },
-            { "yue", "粤语" },
-            { "ko", "韩语" }
-        };
+        public static Dictionary<string, string> SupportedLanguages =>
+            TTSLanguage.SupportedLanguages.ToDictionary(option => option.Key, option => option.Value);
     }
 
     public class OpenAITTSSetting
@@ -179,7 +249,9 @@ namespace Vpet.Plugin.CustomTTS
         [Line]
         public string PromptText { get; set; } = "";
         [Line]
-        public string TextLanguage { get; set; } = "中文";
+        public string TextLanguage { get; set; } = TTSLanguage.Chinese;
+        [Line]
+        public string PromptLanguage { get; set; } = ""; // 旧配置缺少此字段时跟随 TextLanguage
         [Line]
         public double Temperature { get; set; } = 1.0;
         [Line]

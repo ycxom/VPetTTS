@@ -1,5 +1,6 @@
 VPetTTS#VPetTTS:|
 你好,主人\n现在是#Hola, maestro\n ahora es:|
+你好，主人。现在是 {0}。#Hola, maestro. Ahora son las {0}.:|
 生成失败#Generación fallida:|
 错误代码: {0}\n消息: {1}#Código de error: {0}\n Mensaje: {1}:|
 VPetTTS 设置#Configuración de VPetTTS:|

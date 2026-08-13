@@ -716,7 +716,7 @@ namespace Vpet.Plugin.CustomTTS
         {
             try
             {
-                text = text ?? "你好，主人。现在是".Translate() + DateTime.Now.ToString("HH:mm");
+                text ??= GetDefaultTestText();
 
                 LogMessage($"开始 TTS 测试: {text}");
 
@@ -786,6 +786,32 @@ namespace Vpet.Plugin.CustomTTS
                 _stateManager.SetError($"TTS测试失败: {ex.Message}", ex, TTSOperationStage.Processing);
             }
             return false;
+        }
+
+        /// <summary>
+        /// 根据当前提供商的文本语言生成测试句，避免给日语模型发送中文测试文本。
+        /// auto 和没有语言参数的提供商跟随 VPet 的界面语言。
+        /// </summary>
+        private string GetDefaultTestText()
+        {
+            var configuredLanguage = Set?.Provider switch
+            {
+                "Free" => Set.Free?.TextLanguage,
+                "GPT-SoVITS" => Set.GPTSoVITS?.TextLanguage,
+                _ => "auto"
+            };
+            var language = TTSLanguage.Normalize(configuredLanguage, "auto");
+            var currentTime = DateTime.Now.ToString("HH:mm");
+
+            return language switch
+            {
+                "zh" => $"你好，主人。现在是 {currentTime}。",
+                "en" => $"Hello, master. The current time is {currentTime}.",
+                "ja" => $"こんにちは、ご主人様。現在の時刻は{currentTime}です。",
+                "yue" => $"主人你好，而家時間係 {currentTime}。",
+                "ko" => $"안녕하세요, 주인님. 현재 시간은 {currentTime}입니다.",
+                _ => string.Format("你好，主人。现在是 {0}。".Translate(), currentTime)
+            };
         }
 
         /// <summary>

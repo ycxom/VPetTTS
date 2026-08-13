@@ -46,13 +46,14 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
 
         private async Task<byte[]> GenerateAudioWebUIAsync(string text)
         {
+            var (textLanguageCode, promptLanguageCode) = GetNormalizedLanguages();
             var requestBody = new
             {
                 text = text,
-                text_lang = Settings.GPTSoVITS.TextLanguage,
+                text_lang = ToWebUILanguage(textLanguageCode),
                 ref_audio_path = Settings.GPTSoVITS.ReferWavPath,
                 prompt_text = Settings.GPTSoVITS.PromptText,
-                prompt_lang = Settings.GPTSoVITS.TextLanguage,
+                prompt_lang = ToWebUILanguage(promptLanguageCode),
                 top_k = 15,
                 top_p = 1.0,
                 temperature = Settings.GPTSoVITS.Temperature,
@@ -88,13 +89,14 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
 
         private async Task<byte[]> GenerateAudioApiV2Async(string text)
         {
+            var (textLanguage, promptLanguage) = GetNormalizedLanguages();
             var requestBody = new
             {
                 text = text,
-                text_lang = "zh",
+                text_lang = textLanguage,
                 ref_audio_path = Settings.GPTSoVITS.ReferWavPath,
                 prompt_text = Settings.GPTSoVITS.PromptText,
-                prompt_lang = "zh",
+                prompt_lang = promptLanguage,
                 top_k = 15,
                 top_p = 1.0,
                 temperature = Settings.GPTSoVITS.Temperature,
@@ -126,6 +128,35 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
 
             OnAudioGenerated(audioData);
             return audioData;
+        }
+
+        /// <summary>
+        /// 旧版 WebUI 兼容接口使用界面显示名称；API v2 则直接使用 ISO 风格语言码。
+        /// 设置中始终保存语言码，在请求适配层完成转换，避免语言切换时混用两种格式。
+        /// </summary>
+        private static string ToWebUILanguage(string language)
+        {
+            return language switch
+            {
+                TTSLanguage.Chinese => "中文",
+                TTSLanguage.English => "英文",
+                TTSLanguage.Japanese => "日文",
+                TTSLanguage.Cantonese => "粤语",
+                TTSLanguage.Korean => "韩文",
+                _ => "多语种混合"
+            };
+        }
+
+        private (string TextLanguage, string PromptLanguage) GetNormalizedLanguages()
+        {
+            var textLanguage = TTSLanguage.Normalize(
+                Settings.GPTSoVITS.TextLanguage,
+                TTSLanguage.Chinese);
+            var promptLanguage = TTSLanguage.Normalize(
+                Settings.GPTSoVITS.PromptLanguage,
+                textLanguage);
+
+            return (textLanguage, promptLanguage);
         }
 
         public override string GetAudioFormat()

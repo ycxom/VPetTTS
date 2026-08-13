@@ -230,24 +230,53 @@ namespace Vpet.Plugin.CustomTTS
             ProviderConfigPanel.Children.Add(langCombo);
         }
 
+        private ComboBox CreateLanguageCombo(string name, string selectedLanguage, string fallbackLanguage)
+        {
+            var combo = new ComboBox
+            {
+                Name = name,
+                Margin = new Thickness(0, 0, 0, 8)
+            };
+            combo.SetResourceReference(StyleProperty, "StandardComboBoxStyle");
+
+            var normalizedLanguage = TTSLanguage.Normalize(selectedLanguage, fallbackLanguage);
+            foreach (var language in TTSLanguage.SupportedLanguages)
+            {
+                var item = new ComboBoxItem
+                {
+                    Content = language.Value.Translate(),
+                    Tag = language.Key
+                };
+                combo.Items.Add(item);
+
+                if (language.Key == normalizedLanguage)
+                    combo.SelectedItem = item;
+            }
+
+            if (combo.SelectedItem is null && combo.Items.Count > 0)
+                combo.SelectedIndex = 0;
+
+            return combo;
+        }
+
         private void AddOpenAIConfig()
         {
-            AddConfigLabel("API Key");
+            AddConfigLabel("API Key".Translate());
             AddTextBox("OpenAI_ApiKey", vts.Set.OpenAI.ApiKey);
 
-            AddConfigLabel("Base URL");
+            AddConfigLabel("Base URL".Translate());
             AddTextBox("OpenAI_BaseUrl", vts.Set.OpenAI.BaseUrl);
 
-            AddConfigLabel("Model");
+            AddConfigLabel("Model".Translate());
             AddTextBox("OpenAI_Model", vts.Set.OpenAI.Model);
 
-            AddConfigLabel("Voice");
+            AddConfigLabel("Voice".Translate());
             AddTextBox("OpenAI_Voice", vts.Set.OpenAI.Voice);
         }
 
         private void AddGPTSoVITSConfig()
         {
-            AddConfigLabel("Base URL");
+            AddConfigLabel("Base URL".Translate());
             AddTextBox("GPTSoVITS_BaseUrl", vts.Set.GPTSoVITS.BaseUrl);
 
             AddConfigLabel("API 模式".Translate());
@@ -265,19 +294,31 @@ namespace Vpet.Plugin.CustomTTS
             }
             ProviderConfigPanel.Children.Add(apiModeCombo);
 
+            AddConfigLabel("文本语言".Translate());
+            ProviderConfigPanel.Children.Add(CreateLanguageCombo(
+                "GPTSoVITS_TextLanguage",
+                vts.Set.GPTSoVITS.TextLanguage,
+                "auto"));
+
             AddConfigLabel("参考音频路径".Translate());
             AddTextBox("GPTSoVITS_ReferWavPath", vts.Set.GPTSoVITS.ReferWavPath);
 
             AddConfigLabel("提示文本".Translate());
             AddTextBox("GPTSoVITS_PromptText", vts.Set.GPTSoVITS.PromptText);
+
+            AddConfigLabel("提示语言".Translate());
+            ProviderConfigPanel.Children.Add(CreateLanguageCombo(
+                "GPTSoVITS_PromptLanguage",
+                vts.Set.GPTSoVITS.PromptLanguage,
+                "zh"));
         }
 
         private void AddURLConfig()
         {
-            AddConfigLabel("Base URL");
+            AddConfigLabel("Base URL".Translate());
             AddTextBox("URL_BaseUrl", vts.Set.URL.BaseUrl);
 
-            AddConfigLabel("Voice ID");
+            AddConfigLabel("Voice ID".Translate());
             AddTextBox("URL_Voice", vts.Set.URL.Voice);
 
             AddConfigLabel("HTTP 方法".Translate());
@@ -298,7 +339,7 @@ namespace Vpet.Plugin.CustomTTS
 
         private void AddDIYConfig()
         {
-            AddConfigLabel("Base URL");
+            AddConfigLabel("Base URL".Translate());
             AddTextBox("DIY_BaseUrl", vts.Set.DIY.BaseUrl);
 
             AddConfigLabel("HTTP 方法".Translate());
@@ -316,7 +357,7 @@ namespace Vpet.Plugin.CustomTTS
             }
             ProviderConfigPanel.Children.Add(methodCombo);
 
-            AddConfigLabel("Content-Type");
+            AddConfigLabel("Content-Type".Translate());
             AddTextBox("DIY_ContentType", vts.Set.DIY.ContentType);
 
             AddConfigLabel("请求体 (使用 {text} 作为文本占位符)".Translate());
@@ -407,6 +448,18 @@ namespace Vpet.Plugin.CustomTTS
             var apiModeCombo = FindControl<ComboBox>("GPTSoVITS_ApiMode");
             if (apiModeCombo?.SelectedItem is ComboBoxItem item)
                 vts.Set.GPTSoVITS.ApiMode = item.Tag?.ToString() ?? "WebUI";
+
+            var textLanguageCombo = FindControl<ComboBox>("GPTSoVITS_TextLanguage");
+            if (textLanguageCombo?.SelectedItem is ComboBoxItem textLanguage)
+                vts.Set.GPTSoVITS.TextLanguage = TTSLanguage.Normalize(
+                    textLanguage.Tag?.ToString(),
+                    "auto");
+
+            var promptLanguageCombo = FindControl<ComboBox>("GPTSoVITS_PromptLanguage");
+            if (promptLanguageCombo?.SelectedItem is ComboBoxItem promptLanguage)
+                vts.Set.GPTSoVITS.PromptLanguage = TTSLanguage.Normalize(
+                    promptLanguage.Tag?.ToString(),
+                    "zh");
         }
 
         private void SaveURLConfig()
@@ -450,7 +503,8 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                MessageBoxX.Show($"打开插件屏蔽设置失败: {ex.Message}".Translate(), "错误".Translate());
+                var message = string.Format("打开插件屏蔽设置失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
             }
         }
 
@@ -505,7 +559,8 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                MessageBoxX.Show($"保存设置失败: {ex.Message}".Translate(), "错误".Translate());
+                var message = string.Format("保存设置失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
             }
         }
 
@@ -517,6 +572,10 @@ namespace Vpet.Plugin.CustomTTS
                 SaveProviderConfig();
                 vts.Set.Volume = VolumeSilder.Value;
                 vts.Set.Speed = SpeedSilder.Value;
+
+                // 测试应立即使用刚在界面中选择的语言，而不是已缓存的旧设置。
+                vts.Set.Validate();
+                vts.ttsManager?.RefreshSettings();
 
                 var success = await vts.TestTTSAsync();
                 if (!success)
@@ -532,7 +591,8 @@ namespace Vpet.Plugin.CustomTTS
             catch (Exception ex)
             {
                 UpdateServiceUnavailableStatus();
-                MessageBoxX.Show($"测试失败: {ex.Message}".Translate(), "错误".Translate());
+                var message = string.Format("测试失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
             }
             finally
             {
@@ -547,10 +607,14 @@ namespace Vpet.Plugin.CustomTTS
                 // 先显示缓存统计
                 var stats = vts.GetCacheStatistics();
                 string statsInfo = stats is not null
-                    ? $"当前缓存: {stats.TotalFiles} 个文件, {stats.TotalSizeFormatted}\n过期文件: {stats.ExpiredFiles} 个\n\n确定要清理所有缓存吗？"
-                    : "确定要清理所有缓存吗？";
+                    ? string.Format(
+                        "当前缓存: {0} 个文件, {1}\n过期文件: {2} 个\n\n确定要清理所有缓存吗？".Translate(),
+                        stats.TotalFiles,
+                        stats.TotalSizeFormatted,
+                        stats.ExpiredFiles)
+                    : "确定要清理所有缓存吗？".Translate();
 
-                var result = MessageBoxX.Show(statsInfo.Translate(), "清理缓存".Translate(), MessageBoxButton.YesNo);
+                var result = MessageBoxX.Show(statsInfo, "清理缓存".Translate(), MessageBoxButton.YesNo);
                 if (result == MessageBoxResult.Yes)
                 {
                     vts.ClearCache();
@@ -559,7 +623,8 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                MessageBoxX.Show($"清理缓存失败: {ex.Message}".Translate(), "错误".Translate());
+                var message = string.Format("清理缓存失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
             }
         }
 
@@ -568,11 +633,15 @@ namespace Vpet.Plugin.CustomTTS
             try
             {
                 var deletedCount = vts.CleanupExpiredCache();
-                MessageBoxX.Show($"已清理 {deletedCount} 个过期缓存文件（超过7天未使用）".Translate(), "提示".Translate());
+                var message = string.Format(
+                    "已清理 {0} 个过期缓存文件（超过7天未使用）".Translate(),
+                    deletedCount);
+                MessageBoxX.Show(message, "提示".Translate());
             }
             catch (Exception ex)
             {
-                MessageBoxX.Show($"清理过期缓存失败: {ex.Message}".Translate(), "错误".Translate());
+                var message = string.Format("清理过期缓存失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
             }
         }
 
@@ -584,7 +653,8 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                MessageBoxX.Show($"打开调试窗口失败: {ex.Message}".Translate(), "错误".Translate());
+                var message = string.Format("打开调试窗口失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
             }
         }
 

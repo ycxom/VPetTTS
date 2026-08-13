@@ -117,7 +117,9 @@ namespace Vpet.Plugin.CustomTTS
                         System.Windows.Media.Brushes.Green : System.Windows.Media.Brushes.Orange;
 
                     // 更新 VPetLLM 插件状态
-                    txtVPetLLMStatus.Text = playerDetailInfo.VPetLLMPluginExists ? "✓ 已安装" : "✗ 未安装";
+                    txtVPetLLMStatus.Text = playerDetailInfo.VPetLLMPluginExists
+                        ? "✓ 已安装".Translate()
+                        : "✗ 未安装".Translate();
                     txtVPetLLMStatus.Foreground = playerDetailInfo.VPetLLMPluginExists ?
                         System.Windows.Media.Brushes.Green : System.Windows.Media.Brushes.Red;
 
@@ -126,18 +128,20 @@ namespace Vpet.Plugin.CustomTTS
                     {
                         if (playerDetailInfo.MpvPlayerAvailable)
                         {
-                            txtMpvStatus.Text = $"✓ 可用 ({playerDetailInfo.MpvVersion})";
+                            txtMpvStatus.Text = string.Format(
+                                "✓ 可用 ({0})".Translate(),
+                                playerDetailInfo.MpvVersion);
                             txtMpvStatus.Foreground = System.Windows.Media.Brushes.Green;
                         }
                         else
                         {
-                            txtMpvStatus.Text = "✗ 不可用";
+                            txtMpvStatus.Text = "✗ 不可用".Translate();
                             txtMpvStatus.Foreground = System.Windows.Media.Brushes.Red;
                         }
                     }
                     else
                     {
-                        txtMpvStatus.Text = "- VPetLLM 未安装";
+                        txtMpvStatus.Text = "- VPetLLM 未安装".Translate();
                         txtMpvStatus.Foreground = System.Windows.Media.Brushes.Gray;
                     }
 
@@ -167,10 +171,10 @@ namespace Vpet.Plugin.CustomTTS
         {
             return playerType switch
             {
-                PlayerType.MpvPlayer => "mpv 播放器 (高码率)",
-                PlayerType.VPetBuiltIn => "VPet 内置播放器",
-                PlayerType.None => "无播放器",
-                _ => "未知播放器"
+                PlayerType.MpvPlayer => "mpv 播放器 (高码率)".Translate(),
+                PlayerType.VPetBuiltIn => "VPet 内置播放器".Translate(),
+                PlayerType.None => "无播放器".Translate(),
+                _ => "未知播放器".Translate()
             };
         }
 
@@ -270,7 +274,7 @@ namespace Vpet.Plugin.CustomTTS
             {
                 AppendLog("=== 开始播放器测试 ===");
                 btnTestPlayer.IsEnabled = false;
-                btnTestPlayer.Content = "测试中...";
+                btnTestPlayer.Content = "测试中...".Translate();
 
                 // 运行系统测试
                 var testResult = await _plugin.RunSystemTestAsync();
@@ -296,7 +300,7 @@ namespace Vpet.Plugin.CustomTTS
             finally
             {
                 btnTestPlayer.IsEnabled = true;
-                btnTestPlayer.Content = "测试播放器";
+                btnTestPlayer.Content = "测试播放器".Translate();
             }
         }
 
@@ -309,7 +313,7 @@ namespace Vpet.Plugin.CustomTTS
             {
                 AppendLog("=== 开始系统诊断 ===");
                 btnRunDiagnostic.IsEnabled = false;
-                btnRunDiagnostic.Content = "诊断中...";
+                btnRunDiagnostic.Content = "诊断中...".Translate();
 
                 await RunComprehensiveDiagnostic();
 
@@ -322,7 +326,7 @@ namespace Vpet.Plugin.CustomTTS
             finally
             {
                 btnRunDiagnostic.IsEnabled = true;
-                btnRunDiagnostic.Content = "运行诊断";
+                btnRunDiagnostic.Content = "运行诊断".Translate();
             }
         }
 
@@ -441,10 +445,12 @@ namespace Vpet.Plugin.CustomTTS
         {
             try
             {
+                var textFileLabel = "文本文件".Translate();
+                var allFileLabel = "所有文件".Translate();
                 var saveDialog = new SaveFileDialog
                 {
-                    Title = "保存调试日志",
-                    Filter = "文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
+                    Title = "保存调试日志".Translate(),
+                    Filter = $"{textFileLabel} (*.txt)|*.txt|{allFileLabel} (*.*)|*.*",
                     FileName = $"VPetTTS_Debug_{DateTime.Now:yyyyMMdd_HHmmss}.txt"
                 };
 
@@ -455,15 +461,19 @@ namespace Vpet.Plugin.CustomTTS
                         File.WriteAllText(saveDialog.FileName, _logBuffer.ToString(), Encoding.UTF8);
                     }
 
-                    AppendLog($"日志已保存到: {saveDialog.FileName}");
-                    MessageBox.Show($"日志已保存到:\n{saveDialog.FileName}", "保存成功",
+                    AppendLog(string.Format("日志已保存到: {0}".Translate(), saveDialog.FileName));
+                    MessageBox.Show(
+                        string.Format("日志已保存到:\n{0}".Translate(), saveDialog.FileName),
+                        "保存成功".Translate(),
                         MessageBoxButton.OK, MessageBoxImage.Information);
                 }
             }
             catch (Exception ex)
             {
-                AppendLog($"保存日志失败: {ex.Message}");
-                MessageBox.Show($"保存日志失败:\n{ex.Message}", "保存失败",
+                AppendLog(string.Format("保存日志失败: {0}".Translate(), ex.Message));
+                MessageBox.Show(
+                    string.Format("保存日志失败:\n{0}".Translate(), ex.Message),
+                    "保存失败".Translate(),
                     MessageBoxButton.OK, MessageBoxImage.Error);
             }
         }

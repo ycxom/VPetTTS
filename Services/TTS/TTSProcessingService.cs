@@ -168,7 +168,7 @@ public class TTSProcessingService : ITTSProcessingService
             // 2. 检查常规缓存
             if (_settings.EnableCache)
             {
-                var cacheKey = Sub.GetHashCode(text + _settings.Provider).ToString("X");
+                var cacheKey = CacheKeyGenerator.GenerateCacheKey(text, _settings);
                 var cachedPath = _cacheManager.GetCachePath(cacheKey);
 
                 if (!string.IsNullOrEmpty(cachedPath) && File.Exists(cachedPath))
@@ -212,9 +212,11 @@ public class TTSProcessingService : ITTSProcessingService
             string cachedPath;
             if (_settings.EnableCache)
             {
-                var cacheKey = Sub.GetHashCode(text + _settings.Provider).ToString("X");
+                var cacheKey = CacheKeyGenerator.GenerateCacheKey(text, _settings);
                 await _cacheManager.SaveToCacheAsync(cacheKey, audioData);
-                cachedPath = Path.Combine(GraphCore.CachePath, "tts", $"{cacheKey}.mp3");
+                cachedPath = _cacheManager.GetCachePath(cacheKey);
+                if (string.IsNullOrEmpty(cachedPath))
+                    throw new IOException("保存 TTS 缓存后无法获取缓存路径");
             }
             else
             {
