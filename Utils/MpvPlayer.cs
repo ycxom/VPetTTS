@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Diagnostics;
 
 namespace Vpet.Plugin.CustomTTS.Utils
@@ -16,6 +17,15 @@ namespace Vpet.Plugin.CustomTTS.Utils
         private bool _disposed = false;
         private CancellationTokenSource _cancellationTokenSource;
         private Task _processMonitorTask;
+
+        /// <summary>
+        /// 本次使用的 mpv 是否认识 --media-controls。按 exe 路径缓存，
+        /// 一个进程生命周期内每个 mpv 只探测一次。
+        /// </summary>
+        private readonly bool _supportsMediaControls;
+
+        private static readonly ConcurrentDictionary<string, bool> _mediaControlsSupportCache =
+            new ConcurrentDictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>
         /// 进程异常退出事件
@@ -75,7 +85,76 @@ namespace Vpet.Plugin.CustomTTS.Utils
             }
 
             _cancellationTokenSource = new CancellationTokenSource();
-            LogMessage($"mpv 播放器初始化成功: {_mpvExePath}");
+            _supportsMediaControls = SupportsMediaControls(_mpvExePath);
+            LogMessage($"mpv 播放器初始化成功: {_mpvExePath}"
+                + (_supportsMediaControls
+                    ? "（已关闭 SMTC 集成）"
+                    : "（该 mpv 不支持 --media-controls，语音仍会出现在系统媒体控制中，建议升级到 mpv 0.38+）"));
+        }
+
+        /// <summary>
+        /// 关闭 mpv 与 Windows 系统媒体传输控件（SMTC）的集成。
+        ///
+        /// mpv 默认会把正在播放的内容注册成一个系统媒体会话：桌宠每说一句话，
+        /// 系统就多出一条"正在播放"，媒体键被抢走，依赖 SMTC 的第三方程序
+        /// （歌词、手表联动等）也会被这几秒的语音顶掉当前曲目，而且 mpv 进程退出后
+        /// 这条会话信息常常还残留一会儿不消失。TTS 是几秒钟的语音而非媒体内容，
+        /// 压根不该出现在系统媒体控制里，所以直接从源头关掉，不去注册就没有释放问题。
+        /// </summary>
+        private const string DisableMediaControlsArg = "--media-controls=no";
+
+        /// <summary>探测 mpv 能力的超时</summary>
+        private const int CapabilityProbeMs = 3000;
+
+        /// <summary>
+        /// 探测 mpv 是否支持 <see cref="DisableMediaControlsArg"/>。
+        ///
+        /// 该选项 mpv 0.38 才引入，而 mpv.exe 来自 VPetLLM 插件目录、由用户自行放置，
+        /// 版本不可控。mpv 碰到不认识的选项会直接以退出码 1 失败 —— 无脑加上去的话，
+        /// 老版本用户会变成"每句话都播放失败并回退到内置播放器"。所以先花一次进程启动
+        /// 的代价问清楚，结果按路径缓存。
+        /// </summary>
+        private static bool SupportsMediaControls(string mpvExePath)
+        {
+            return _mediaControlsSupportCache.GetOrAdd(mpvExePath, ProbeMediaControlsSupport);
+        }
+
+        private static bool ProbeMediaControlsSupport(string mpvExePath)
+        {
+            try
+            {
+                var startInfo = new ProcessStartInfo
+                {
+                    FileName = mpvExePath,
+                    Arguments = $"{DisableMediaControlsArg} --version",
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = true,
+                    RedirectStandardError = true,
+                    WorkingDirectory = Path.GetDirectoryName(mpvExePath)
+                };
+
+                using var probe = Process.Start(startInfo);
+                if (probe is null)
+                    return false;
+
+                // 先挂上异步读取再等待：不排空管道的话，输出填满缓冲区会让 mpv 卡在写入上
+                _ = probe.StandardOutput.ReadToEndAsync();
+                _ = probe.StandardError.ReadToEndAsync();
+
+                if (!probe.WaitForExit(CapabilityProbeMs))
+                {
+                    try { probe.Kill(); } catch { }
+                    return false;
+                }
+
+                return probe.ExitCode == 0;
+            }
+            catch (Exception ex)
+            {
+                TTSLogger.Log($"[MpvPlayer] 探测 mpv --media-controls 支持失败，按不支持处理: {ex.Message}");
+                return false;
+            }
         }
 
         /// <summary>
@@ -151,8 +230,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
         {
             try
             {
-                // 构建命令行参数
-                var args = $"--no-video --volume={_volume} --no-terminal --really-quiet \"{filePath}\"";
+                // 构建命令行参数。
+                // 命令行上的 --media-controls 会覆盖用户 mpv.conf 里的同名设置，
+                // 所以只要 mpv 认这个选项，SMTC 集成就一定是关的。
+                var mediaControls = _supportsMediaControls ? $"{DisableMediaControlsArg} " : "";
+                var args = $"--no-video {mediaControls}--volume={_volume} --no-terminal --really-quiet \"{filePath}\"";
 
                 // 创建进程启动信息
                 var startInfo = new ProcessStartInfo
