@@ -160,7 +160,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// <summary>
         /// 播放音频文件
         /// </summary>
-        public async Task PlayAsync(string filePath)
+        public async Task PlayAsync(string filePath, Action onPlaybackStarted = null)
         {
             if (_disposed)
             {
@@ -201,7 +201,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 LogMessage($"开始播放: {Path.GetFileName(filePath)}");
 
                 // 启动 mpv 进程
-                await StartMpvProcessAsync(filePath);
+                await StartMpvProcessAsync(filePath, onPlaybackStarted);
 
                 LogMessage($"播放完成: {Path.GetFileName(filePath)}");
             }
@@ -226,7 +226,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// <summary>
         /// 启动 mpv 进程
         /// </summary>
-        private async Task StartMpvProcessAsync(string filePath)
+        private async Task StartMpvProcessAsync(string filePath, Action onPlaybackStarted = null)
         {
             try
             {
@@ -279,6 +279,20 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 ChildProcessTracker.Track(process);
 
                 LogMessage($"mpv 进程已启动 (PID: {process.Id})");
+
+                // 起播回报的锚点：进程已经拉起来，音频输出随即开始。
+                // 不能提前到 PlayAudioAsync 开头 —— 那之前还隔着一次 Dispatcher.Invoke
+                // （静音占位）和进程创建本身，合计几十到几百毫秒、冷启动或杀软扫描时更久，
+                // 提前回报会让气泡稳定早于声音，且早多少完全看当时的机器状态。
+                try
+                {
+                    onPlaybackStarted?.Invoke();
+                }
+                catch (Exception ex)
+                {
+                    // 订阅方（VPetLLM 的气泡显示）出问题不能拖累播放本身
+                    LogMessage($"起播回调异常: {ex.Message}");
+                }
 
                 // 启动进程监控
                 StartProcessMonitoring();

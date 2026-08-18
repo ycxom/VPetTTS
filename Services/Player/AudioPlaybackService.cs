@@ -72,17 +72,30 @@ public class AudioPlaybackService : IAudioPlaybackService
         _stateManager?.SetPlayingState(true, normalizedPath, "", audioDurationMs);
         _isPlaying = true;
 
-        // 起播通知要在真正拉起播放器之前发：下面 PlayWithXxxAsync 是"播完才返回"的，
-        // 放到后面就永远等到播放结束才通知，气泡会整段落在语音后面。
-        // 这里已经把状态置为播放中，时长也算好了，是语义上最接近"声音开始"的时刻。
-        try
+        // 起播回报交给具体的播放路径在"播放器真的被拉起来之后"触发（见下面两个 PlayWithXxxAsync）。
+        // 不能在这里提前发：这之后还隔着一次 Dispatcher.Invoke（静音占位）加 mpv 进程创建，
+        // 或者内置播放器的 Dispatcher 派发，合计几十到几百毫秒且完全看当时机器状态 ——
+        // 提前发的结果就是气泡稳定早于声音，早多少还每次都不一样。
+        //
+        // 只发一次：mpv 失败回退到内置播放器会把这句重播一遍，第二次回报对已经拿到
+        // 信号的等待者是空操作，但会白白多打一轮日志、也让日志看起来像播了两次。
+        var startNotified = 0;
+        void NotifyPlaybackStarted()
         {
-            onPlaybackStarted?.Invoke(audioDurationMs);
-        }
-        catch (Exception ex)
-        {
-            // 订阅方（VPetLLM 的气泡显示）出问题不能拖累播放本身
-            TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 起播回调异常: {ex.Message}");
+            if (Interlocked.Exchange(ref startNotified, 1) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                onPlaybackStarted?.Invoke(audioDurationMs);
+            }
+            catch (Exception ex)
+            {
+                // 订阅方（VPetLLM 的气泡显示）出问题不能拖累播放本身
+                TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 起播回调异常: {ex.Message}");
+            }
         }
 
         try
@@ -96,13 +109,13 @@ public class AudioPlaybackService : IAudioPlaybackService
                     if (_playerManager.CurrentPlayerType == PlayerType.MpvPlayer && _playerManager.UseMpvPlayer)
                     {
                         // 使用 mpv 播放器（高码率支持）
-                        await PlayWithMpvAsync(normalizedPath);
+                        await PlayWithMpvAsync(normalizedPath, NotifyPlaybackStarted);
                         return; // 播放成功
                     }
                     else if (_playerManager.CurrentPlayerType == PlayerType.VPetBuiltIn)
                     {
                         // 使用 VPet 内置播放器
-                        await PlayWithVPetBuiltInAsync(normalizedPath);
+                        await PlayWithVPetBuiltInAsync(normalizedPath, NotifyPlaybackStarted);
                         return; // 播放成功
                     }
                     else
@@ -191,9 +204,11 @@ public class AudioPlaybackService : IAudioPlaybackService
     // ============================================================================
 
     /// <summary>
-    /// 使用 mpv 播放器播放音频
+    /// 使用 mpv 播放器播放音频。
+    /// <paramref name="onPlaybackStarted"/> 在 mpv 进程拉起来之后触发，
+    /// 而不是在方法入口 —— 静音占位的 Dispatcher.Invoke 和进程创建都要算进"出声之前"。
     /// </summary>
-    private async Task PlayWithMpvAsync(string path)
+    private async Task PlayWithMpvAsync(string path, Action onPlaybackStarted)
     {
         var mpvPlayer = (_playerManager as PlayerManager)?.GetMpvPlayer();
         if (mpvPlayer is null)
@@ -223,8 +238,9 @@ public class AudioPlaybackService : IAudioPlaybackService
 
             try
             {
-                // 启动播放并等待完成
-                await mpvPlayer.PlayAsync(path);
+                // 启动播放并等待完成。起播回报由 MpvPlayer 在 Process.Start 成功后回调，
+                // 此时静音占位已经就位、进程也已拉起，是"声音即将出来"最准的时刻。
+                await mpvPlayer.PlayAsync(path, onPlaybackStarted);
             }
             finally
             {
@@ -288,9 +304,11 @@ public class AudioPlaybackService : IAudioPlaybackService
     }
 
     /// <summary>
-    /// 使用 VPet 内置播放器播放音频
+    /// 使用 VPet 内置播放器播放音频。
+    /// <paramref name="onPlaybackStarted"/> 在 PlayVoice 真正派发到 UI 线程之后触发 ——
+    /// UI 线程忙的时候这一跳本身就要排队，提前回报等于把这段排队时间算给了气泡。
     /// </summary>
-    private async Task PlayWithVPetBuiltInAsync(string path)
+    private async Task PlayWithVPetBuiltInAsync(string path, Action onPlaybackStarted)
     {
         try
         {
@@ -329,6 +347,10 @@ public class AudioPlaybackService : IAudioPlaybackService
                     throw new InvalidOperationException($"VPet 内置播放器调用失败: {ex.Message}", ex);
                 }
             });
+
+            // PlayVoice 已经在 UI 线程上执行完毕（MediaElement 已拿到源并开始播放），
+            // 到这里再回报起播。放在 Dispatcher 派发之前的话，UI 线程有多忙这里就早多少。
+            onPlaybackStarted?.Invoke();
 
             // 等待VPet内置播放器播放完成
             await WaitForPlaybackCompleteAsync();
@@ -385,14 +407,21 @@ public class AudioPlaybackService : IAudioPlaybackService
             var info = new FileInfo(path);
             if (info.Length <= 0) return -1;
 
-            // WAV（Free/GPT-SoVITS 的默认输出）能从头部精确算出时长，不需要任何第三方库。
-            if (string.Equals(Path.GetExtension(path), ".wav", StringComparison.OrdinalIgnoreCase))
-            {
-                var wavMs = TryGetWavDurationMs(path);
-                if (wavMs > 0) return wavMs;
-            }
+            // 按内容认格式，不看扩展名 —— 缓存里的文件一律叫 .mp3（见 TTSCacheManager
+            // 的 $"{cacheKey}.mp3"），但 Free/GPT-SoVITS 返回的其实是 WAV。
+            // 早先这里用扩展名决定要不要解析 WAV 头，于是缓存里的 WAV 永远走不到精确解析，
+            // 一路掉到下面按 128kbps 的粗估：16bit/32kHz 单声道实际是 512kbps，
+            // 估出来正好是真实时长的四倍（日志里 17s 的音频报成 68s）。
+            // 两个解析器都自带格式校验（RIFF/WAVE 魔数、MPEG 帧同步字），认不出就返回 -1，
+            // 依次试过去是安全的。
+            var wavMs = TryGetWavDurationMs(path);
+            if (wavMs > 0) return wavMs;
 
-            // 其余格式按 128kbps 粗估。宁可给个量级正确的估算，
+            // MP3（OpenAI 这类云端 TTS 的常见输出）读第一个帧头拿真实码率
+            var mp3Ms = TryGetMp3DurationMs(path, info.Length);
+            if (mp3Ms > 0) return mp3Ms;
+
+            // 实在认不出的容器按 128kbps 粗估。宁可给个量级正确的估算，
             // 也不要返回 -1 ——VPetLLM 拿 -1 无法安排动画时长。
             var estimated = (long)(info.Length * 8.0 / 128.0);
             return estimated > 0 ? estimated : -1;
@@ -461,5 +490,76 @@ public class AudioPlaybackService : IAudioPlaybackService
     {
         var bytes = reader.ReadBytes(4);
         return bytes.Length == 4 ? Encoding.ASCII.GetString(bytes) : "";
+    }
+
+    // MPEG-1/2/2.5 Layer III 的码率表（kbps），索引即帧头里的 4 位码率字段。
+    // 0 是"自由格式"、15 是无效值，都当作认不出。
+    private static readonly int[] Mp3BitRatesV1 =
+        { 0, 32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320, 0 };
+    private static readonly int[] Mp3BitRatesV2 =
+        { 0, 8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160, 0 };
+
+    /// <summary>
+    /// 读第一个 MP3 帧头拿码率，据此估算时长。CBR 文件（云端 TTS 基本都是）能算得很准。
+    /// 不是 MP3、或帧头认不出时返回 -1 交给上层按固定码率粗估。
+    ///
+    /// 只按扩展名判断不够：有些服务返回的是 .mp3 却带 ID3 头，也有直接叫 .tmp 的，
+    /// 所以这里跳过 ID3 之后再找同步字，认得出就用，认不出就退回去。
+    /// </summary>
+    private static long TryGetMp3DurationMs(string path, long fileLength)
+    {
+        try
+        {
+            using var fs = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+            long offset = 0;
+
+            // ID3v2 头："ID3" + 版本(2) + 标志(1) + 大小(4，同步安全整数，每字节只用低 7 位)
+            var header = new byte[10];
+            if (fs.Read(header, 0, 10) < 10) return -1;
+
+            if (header[0] == (byte)'I' && header[1] == (byte)'D' && header[2] == (byte)'3')
+            {
+                var tagSize = (header[6] & 0x7F) << 21 | (header[7] & 0x7F) << 14
+                            | (header[8] & 0x7F) << 7 | (header[9] & 0x7F);
+                offset = 10 + tagSize;
+                if (offset >= fileLength) return -1;
+            }
+
+            // 在标签之后找第一个帧同步字（11 位全 1）。正常文件第一个字节就是，
+            // 但填充字节的存在让"扫一小段"比"只看一个位置"稳妥。
+            fs.Position = offset;
+            var buffer = new byte[4096];
+            var read = fs.Read(buffer, 0, buffer.Length);
+
+            for (int i = 0; i + 3 < read; i++)
+            {
+                if (buffer[i] != 0xFF || (buffer[i + 1] & 0xE0) != 0xE0)
+                    continue;
+
+                var versionBits = (buffer[i + 1] >> 3) & 0x03;   // 3=MPEG1, 2=MPEG2, 0=MPEG2.5, 1=保留
+                var layerBits = (buffer[i + 1] >> 1) & 0x03;     // 1=Layer III
+                var bitRateIndex = (buffer[i + 2] >> 4) & 0x0F;
+
+                // 版本保留值直接跳过；只认 Layer III —— 下面两张码率表是 Layer III 的，
+                // 拿去套 Layer I/II 会算出一个错得离谱的时长，还不如退回按固定码率粗估。
+                // 这两个条件同时也在过滤误命中：音频数据里凑巧出现 0xFF Ex 的概率不低。
+                if (versionBits == 1 || layerBits != 1) continue;
+
+                var table = versionBits == 3 ? Mp3BitRatesV1 : Mp3BitRatesV2;
+                var kbps = table[bitRateIndex];
+                if (kbps <= 0) continue;
+
+                // 音频数据 = 文件去掉 ID3 标签。尾部可能还有 ID3v1(128字节)，
+                // 相对整段音频可以忽略，不值得为它再读一次文件尾。
+                var audioBytes = fileLength - offset;
+                if (audioBytes <= 0) return -1;
+
+                return (long)(audioBytes * 8.0 / kbps);
+            }
+        }
+        catch { }
+
+        return -1;
     }
 }
