@@ -1,4 +1,4 @@
-namespace Vpet.Plugin.CustomTTS
+﻿namespace Vpet.Plugin.CustomTTS
 {
     public class VPetTTS : MainPlugin
     {
@@ -203,7 +203,8 @@ namespace Vpet.Plugin.CustomTTS
             }
             catch (Exception ex)
             {
-                LogMessage($"Say 来源拦截器初始化失败: {ex.Message}");
+                LogMessage($"Say 来源拦截器初始化失败: {ExceptionDetail.Brief(ex)}");
+                LogMessage($"详情{Environment.NewLine}{ExceptionDetail.Full(ex)}");
             }
 
             // 如果启用TTS，注册SayProcess事件（尽早注册以捕获启动语句）
@@ -220,19 +221,14 @@ namespace Vpet.Plugin.CustomTTS
             // 同步初始化各组件（均为廉价的对象创建/小文件读取，毫秒级完成）。
             // 唯一耗时的是 Free TTS 配置的网络下载，单独放到后台执行（见下方），
             // 不再像旧版那样在此阻塞等待最多 10 秒。
-            try
-            {
-                _initializationService.InitializeAuthProviders();
-                _initializationService.InitializeStateManager();
-                _initializationService.InitializeCacheManager();
-                _initializationService.InitializeTTSManager();
-                _initializationService.InitializePreloadService();
-                LogMessage("初始化服务完成");
-            }
-            catch (Exception ex)
-            {
-                LogMessage($"初始化服务失败: {ex.Message}");
-            }
+            // 每一步单独 try/catch：这几个组件之间只有 PreloadService 依赖前面两个，
+            // 旧代码用一个 try 包住全部，导致 CacheManager 一挂就连带 TTSManager、
+            // PreloadService 全部不执行，最终以"依赖组件未初始化"的形式表现出来。
+            RunInitStep("认证提供者", _initializationService.InitializeAuthProviders);
+            RunInitStep("状态管理器", _initializationService.InitializeStateManager);
+            RunInitStep("缓存管理器", _initializationService.InitializeCacheManager);
+            RunInitStep("TTS 管理器", _initializationService.InitializeTTSManager);
+            RunInitStep("预加载服务", _initializationService.InitializePreloadService);
 
             // 后台刷新 Free TTS 配置（网络下载，不阻塞启动）。
             // FreeTTSCore 构造时读取的是本地已缓存的配置；下载完成后热重载，
@@ -246,7 +242,8 @@ namespace Vpet.Plugin.CustomTTS
                 }
                 catch (Exception ex)
                 {
-                    LogMessage($"Free TTS 配置后台刷新失败: {ex.Message}");
+                    LogMessage($"Free TTS 配置后台刷新失败: {ExceptionDetail.Brief(ex)}");
+                    LogMessage($"详情{Environment.NewLine}{ExceptionDetail.Full(ex)}");
                 }
             });
 
@@ -290,6 +287,11 @@ namespace Vpet.Plugin.CustomTTS
             {
                 LogMessage("TTS 处理服务初始化失败：依赖组件未初始化");
                 LogMessage($"ttsManager: {ttsManager != null}, _cacheManager: {_cacheManager != null}, _preloadService: {_preloadService != null}");
+
+                // 管线永远不会就绪，此时必须摘掉 SayProcess 钩子。
+                // 否则 Main_OnSay 会把每一句话都吞进 _pendingStartupText（那里只在管线就绪时才补读），
+                // 结果是桌宠整场静音，而宿主的内置 TTS 也因为钩子占位而没机会接管。
+                DetachSayHookOnFailure();
             }
 
             // 6. 系统测试服务
@@ -354,7 +356,8 @@ namespace Vpet.Plugin.CustomTTS
                 }
                 catch (Exception ex)
                 {
-                    LogMessage($"云端屏蔽列表获取/合并失败: {ex.Message}");
+                    LogMessage($"云端屏蔽列表获取/合并失败: {ExceptionDetail.Brief(ex)}");
+                    LogMessage($"详情{Environment.NewLine}{ExceptionDetail.Full(ex)}");
                 }
             });
 
@@ -707,6 +710,64 @@ namespace Vpet.Plugin.CustomTTS
         public void LogMessage(string message)
         {
             TTSLogger.Log($"[VPetTTS] {DateTime.Now:yyyy-MM-dd HH:mm:ss} {message}");
+        }
+
+        /// <summary>
+        /// 最近一次初始化失败的原因（供设置窗口/调试窗口展示）。为 null 表示初始化正常。
+        /// </summary>
+        public string InitializationError { get; private set; }
+
+        /// <summary>
+        /// 执行一个初始化步骤。失败时记录**完整**异常信息，但不影响后续步骤。
+        /// 只记 ex.Message 会丢掉异常类型、内部异常和堆栈——程序集绑定失败正是这类
+        /// "Message 只说加载不了、真正原因在别处" 的异常。
+        /// </summary>
+        private void RunInitStep(string stepName, Action step)
+        {
+            try
+            {
+                step();
+            }
+            catch (Exception ex)
+            {
+                var brief = ExceptionDetail.Brief(ex);
+                InitializationError = InitializationError is null
+                    ? $"{stepName}: {brief}"
+                    : $"{InitializationError}; {stepName}: {brief}";
+
+                LogMessage($"初始化步骤失败 [{stepName}] {brief}");
+                LogMessage($"初始化步骤详情 [{stepName}]{Environment.NewLine}{ExceptionDetail.Full(ex)}");
+
+                // 程序集加载类失败：额外记录同名程序集在当前进程里的加载现状。
+                // 这能直接区分「文件根本没被加载」和「同名不同版本/不同路径冲突」。
+                var failedAssembly = ExceptionDetail.TryGetFailedAssemblyName(ex);
+                if (!string.IsNullOrEmpty(failedAssembly))
+                    LogMessage($"程序集诊断 [{stepName}] {ExceptionDetail.LoadedAssemblies(failedAssembly)}");
+            }
+        }
+
+        /// <summary>
+        /// 初始化失败、TTS 管线不可能就绪时，摘掉 SayProcess 钩子。
+        /// 留着钩子会让 Main_OnSay 把每一句话都吞进 _pendingStartupText
+        /// （那里只在管线就绪时才补读），结果是本次会话桌宠完全静音。
+        /// </summary>
+        private void DetachSayHookOnFailure()
+        {
+            try
+            {
+                if (MW?.Main?.SayProcess is null)
+                    return;
+
+                if (MW.Main.SayProcess.Remove(Main_OnSay))
+                    LogMessage("已摘除 SayProcess 钩子：TTS 不可用，说话交还宿主处理，避免整场静音");
+
+                // 丢弃缓存的启动语句，它永远等不到补读
+                System.Threading.Interlocked.Exchange(ref _pendingStartupText, null);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"摘除 SayProcess 钩子失败: {ExceptionDetail.Brief(ex)}");
+            }
         }
 
         /// <summary>

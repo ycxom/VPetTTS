@@ -196,10 +196,20 @@ namespace Vpet.Plugin.CustomTTS
                 if (_logBuffer.Length > 100000) // 100KB
                 {
                     var content = _logBuffer.ToString();
-                    var lines = content.Split('\n');
+
+                    // AppendLine 写入的是 Environment.NewLine（Windows 上是 \r\n）。
+                    // 旧代码只按 '\n' 切分，每行尾部会残留 '\r'，重新 AppendLine 后
+                    // 变成 "\r\r\n"，多轮裁剪后日志会逐渐变脏、且行尾出现不可见字符。
+                    var lines = content.Split(new[] { "\r\n", "\n", "\r" }, StringSplitOptions.None);
                     if (lines.Length > 1000)
                     {
                         _logBuffer.Clear();
+
+                        // 保留最后 800 行；记一条明确的裁剪标记，
+                        // 避免"日志里凭空少了一段"这种误导性现象（本次排查就踩过）。
+                        var dropped = lines.Length - 800;
+                        _logBuffer.AppendLine($"[{timestamp}] ── 日志缓冲区已裁剪，丢弃最早的 {dropped} 行 ──");
+
                         for (int i = lines.Length - 800; i < lines.Length; i++)
                         {
                             if (i >= 0 && !string.IsNullOrEmpty(lines[i]))

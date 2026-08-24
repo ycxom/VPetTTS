@@ -1,4 +1,4 @@
-namespace Vpet.Plugin.CustomTTS.Services.Initialization;
+﻿namespace Vpet.Plugin.CustomTTS.Services.Initialization;
 
 /// <summary>
 /// 初始化服务
@@ -103,8 +103,7 @@ public class InitializationService : IInitializationService
         _stateManager = new TTSStateManager(_settings);
 
         // 将状态管理器设置到插件中
-        _plugin.GetType().GetField("_stateManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            ?.SetValue(_plugin, _stateManager);
+        SetPluginField("_stateManager", _stateManager);
 
         LogMessage("TTS 状态管理器已初始化");
 
@@ -112,8 +111,7 @@ public class InitializationService : IInitializationService
         _sessionManager = new ExclusiveSessionManager();
 
         // 将会话管理器设置到插件中
-        _plugin.GetType().GetField("_sessionManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            ?.SetValue(_plugin, _sessionManager);
+        SetPluginField("_sessionManager", _sessionManager);
 
         LogMessage("独占会话管理器已初始化");
 
@@ -135,8 +133,7 @@ public class InitializationService : IInitializationService
         _cacheManager = new TTSCacheManager(cachePath);
 
         // 将缓存管理器设置到插件中
-        _plugin.GetType().GetField("_cacheManager", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            ?.SetValue(_plugin, _cacheManager);
+        SetPluginField("_cacheManager", _cacheManager);
 
         LogMessage("TTS 缓存管理器已初始化（7天过期策略）");
     }
@@ -178,8 +175,7 @@ public class InitializationService : IInitializationService
         _preloadService = new PreloadService(_ttsManager, _cacheManager, _settings);
 
         // 将预加载服务设置到插件中
-        _plugin.GetType().GetField("_preloadService", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            ?.SetValue(_plugin, _preloadService);
+        SetPluginField("_preloadService", _preloadService);
 
         LogMessage("音频预加载服务已初始化");
 
@@ -188,8 +184,7 @@ public class InitializationService : IInitializationService
         _ttsCoordinator = new VPetLLMTTSCoordinator(_stateManager, _sessionManager, _preloadService, null);
 
         // 将协调器设置到插件中
-        _plugin.GetType().GetField("_ttsCoordinator", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
-            ?.SetValue(_plugin, _ttsCoordinator);
+        SetPluginField("_ttsCoordinator", _ttsCoordinator);
 
         LogMessage("VPetLLM TTS 协调器已初始化");
     }
@@ -199,8 +194,25 @@ public class InitializationService : IInitializationService
     /// </summary>
     private void LogMessage(string message)
     {
-        // 使用插件的日志方法
-        var logMethod = _plugin.GetType().GetMethod("LogMessage", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-        logMethod?.Invoke(_plugin, new object[] { message });
+        // 直接调用，不再走反射：VPetTTS.LogMessage 是 public，
+        // 旧代码用 NonPublic 查找始终返回 null，本服务的日志从未输出过。
+        _plugin.LogMessage(message);
+    }
+
+    /// <summary>
+    /// 通过反射把组件回填到宿主插件的私有字段。
+    /// 字段找不到时必须报错——静默 no-op 会让整条初始化链在下游以
+    /// "依赖组件未初始化" 的形式失败，且无从追溯。
+    /// </summary>
+    private void SetPluginField(string fieldName, object value)
+    {
+        var field = _plugin.GetType().GetField(fieldName,
+            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+
+        if (field is null)
+            throw new InvalidOperationException(
+                $"回填字段失败：在 {_plugin.GetType().FullName} 上找不到字段 '{fieldName}'（字段可能已被重命名）");
+
+        field.SetValue(_plugin, value);
     }
 }
