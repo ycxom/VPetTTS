@@ -30,6 +30,7 @@ namespace Vpet.Plugin.CustomTTS
             SpeedSilder.Value = vts.Set.Speed;
             EnableCache.IsChecked = vts.Set.EnableCache;
             PreferBuiltInPlayer.IsChecked = vts.Set.PreferVPetBuiltInPlayer;
+            EnableTextFilter.IsChecked = vts.Set.TextFilter.Enable;
 
             // 请求超时
             TimeoutSlider.Value = vts.Set.RequestTimeout;
@@ -508,6 +509,33 @@ namespace Vpet.Plugin.CustomTTS
             }
         }
 
+        /// <summary>
+        /// 打开括号类型选择。确定后立即落盘，
+        /// 与插件屏蔽设置的行为保持一致（不依赖主窗口再点一次保存）。
+        /// </summary>
+        private void TextFilterConfig_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                vts.Set.TextFilter ??= new TextFilterSetting();
+
+                var win = new winTextFilter(vts.Set.TextFilter);
+                win.Owner = this;
+                win.ShowDialog();
+
+                if (win.Confirmed)
+                {
+                    vts.Set.Validate();
+                    vts.MW.Set["VPetTTS"] = LPSConvert.SerializeObject(vts.Set, "VPetTTS");
+                }
+            }
+            catch (Exception ex)
+            {
+                var message = string.Format("打开括号过滤设置失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
+            }
+        }
+
         private void Save_Click(object sender, RoutedEventArgs e)
         {
             try
@@ -527,6 +555,7 @@ namespace Vpet.Plugin.CustomTTS
                 vts.Set.Speed = SpeedSilder.Value;
                 vts.Set.RequestTimeout = (int)TimeoutSlider.Value;
                 vts.Set.EnableCache = EnableCache.IsChecked.Value;
+                vts.Set.TextFilter.Enable = EnableTextFilter.IsChecked.Value;
 
                 // 播放器偏好变化时刷新播放器选择
                 var preferBuiltIn = PreferBuiltInPlayer.IsChecked.Value;

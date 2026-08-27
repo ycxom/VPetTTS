@@ -42,6 +42,20 @@ public class TTSProcessingService : ITTSProcessingService
             return;
         }
 
+        // 剔除括号里的动作描写：气泡照旧显示原文，这里只加工要念出来的副本。
+        // 放在缓存查询之前，缓存键才会跟过滤后的文本对齐。
+        var original = text;
+        text = SpeechTextFilter.Apply(text, _settings.TextFilter);
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 过滤后无可朗读内容，跳过 TTS: {Preview(original)}");
+            return;
+        }
+        if (SpeechTextFilter.Changed(original, text))
+        {
+            TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 括号过滤: {Preview(original)} -> {Preview(text)}");
+        }
+
         // 本次请求所属的"中断世代"：中断后世代自增，比对不上说明这条请求已经作废。
         // 合成一段音频要几秒，中断多半发生在这期间，所以每个播放点前都要重新比对。
         var generation = Interlocked.Read(ref _interruptGeneration);
@@ -105,9 +119,18 @@ public class TTSProcessingService : ITTSProcessingService
         if (Interlocked.Read(ref _interruptGeneration) == generation)
             return false;
 
-        var preview = text.Length > 20 ? text.Substring(0, 20) + "..." : text;
-        TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 请求已被中断，放弃播放: {preview}");
+        TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 请求已被中断，放弃播放: {Preview(text)}");
         return true;
+    }
+
+    /// <summary>
+    /// 日志用的短文本预览
+    /// </summary>
+    private static string Preview(string text)
+    {
+        if (string.IsNullOrEmpty(text))
+            return "";
+        return text.Length > 20 ? text.Substring(0, 20) + "..." : text;
     }
 
     /// <summary>

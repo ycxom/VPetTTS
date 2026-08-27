@@ -83,6 +83,12 @@ namespace Vpet.Plugin.CustomTTS
         public DIYTTSSetting DIY { get; set; } = new DIYTTSSetting();
 
         /// <summary>
+        /// 朗读文本过滤（括号内的动作描写只显示不朗读）
+        /// </summary>
+        [Line]
+        public TextFilterSetting TextFilter { get; set; } = new TextFilterSetting();
+
+        /// <summary>
         /// 屏蔽的插件名称列表（这些插件触发的 Say 不会生成 TTS）
         /// </summary>
         [Line]
@@ -119,7 +125,55 @@ namespace Vpet.Plugin.CustomTTS
             GPTSoVITS.PromptLanguage = TTSLanguage.Normalize(
                 GPTSoVITS.PromptLanguage,
                 GPTSoVITS.TextLanguage);
+
+            TextFilter ??= new TextFilterSetting();
+            TextFilter.CustomPairs ??= "";
         }
+    }
+
+    /// <summary>
+    /// 朗读文本过滤设置。
+    ///
+    /// 命中的片段只是不送进 TTS，气泡里的原文不受影响，
+    /// 也就是「动作描写看得到、听不到」。
+    /// </summary>
+    public class TextFilterSetting
+    {
+        /// <summary>
+        /// 总开关。关闭时文本原样朗读（旧行为）
+        /// </summary>
+        [Line]
+        public bool Enable { get; set; } = false;
+
+        /// <summary>圆括号 ( ) （ ）</summary>
+        [Line]
+        public bool RoundBracket { get; set; } = true;
+
+        /// <summary>方括号 [ ] 【 】 〔 〕</summary>
+        [Line]
+        public bool SquareBracket { get; set; } = true;
+
+        /// <summary>花括号 { } ｛ ｝</summary>
+        [Line]
+        public bool CurlyBracket { get; set; } = false;
+
+        /// <summary>
+        /// 尖括号 &lt; &gt; 〈 〉 《 》。
+        /// 默认关闭：书名号和数学比较符号都会被误伤
+        /// </summary>
+        [Line]
+        public bool AngleBracket { get; set; } = false;
+
+        /// <summary>成对星号包裹的动作描写 *摸摸头* / **摸摸头**</summary>
+        [Line]
+        public bool Asterisk { get; set; } = true;
+
+        /// <summary>
+        /// 自定义括号对，开闭两个字符为一组，组间可用空格或逗号分隔。
+        /// 例如「」『』
+        /// </summary>
+        [Line]
+        public string CustomPairs { get; set; } = "";
     }
 
     /// <summary>

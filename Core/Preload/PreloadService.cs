@@ -88,6 +88,17 @@ namespace Vpet.Plugin.CustomTTS.Core.Preload
                     return errorResult;
                 }
 
+                // 与播放路径用同一套括号过滤，预加载的缓存键才对得上
+                // （SpeechTextFilter 幂等，两处各过一次不会互相破坏）
+                var rawText = text;
+                text = SpeechTextFilter.Apply(text, _settings.TextFilter);
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    var skippedResult = PreloadResult.CreateFailure(requestId, rawText, "Text contains nothing to speak after bracket filtering");
+                    LogMessage($"预加载跳过 [{requestId}]: 括号过滤后无可朗读内容");
+                    return skippedResult;
+                }
+
                 // 先回收上一批已结束的任务。
                 //
                 // _activeTasks 里的条目原先只有 Dispose()（插件卸载）才会清理，而
