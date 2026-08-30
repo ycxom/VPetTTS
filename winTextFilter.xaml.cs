@@ -6,7 +6,7 @@ namespace Vpet.Plugin.CustomTTS
     /// </summary>
     public partial class winTextFilter : Window
     {
-        private const string SampleText = "（歪着头看你）今天也辛苦了呀，*蹭了蹭*要不要休息一下？";
+        private const string SampleText = "（歪着头看你）今天也辛苦了呀，<动作>轻轻摸了摸主人的头</动作>要不要休息一下？";
 
         private readonly TextFilterSetting _setting;
         private bool _loaded;
@@ -26,8 +26,11 @@ namespace Vpet.Plugin.CustomTTS
             SquareBracket.IsChecked = _setting.SquareBracket;
             CurlyBracket.IsChecked = _setting.CurlyBracket;
             AngleBracket.IsChecked = _setting.AngleBracket;
+            BookTitleMark.IsChecked = _setting.BookTitleMark;
+            PairedTag.IsChecked = _setting.PairedTag;
             Asterisk.IsChecked = _setting.Asterisk;
             CustomPairs.Text = _setting.CustomPairs ?? "";
+            CustomRegex.Text = _setting.CustomRegex ?? "";
             PreviewInput.Text = SampleText;
 
             _loaded = true;
@@ -40,10 +43,15 @@ namespace Vpet.Plugin.CustomTTS
             CurlyBracket.Unchecked += OnOptionChanged;
             AngleBracket.Checked += OnOptionChanged;
             AngleBracket.Unchecked += OnOptionChanged;
+            BookTitleMark.Checked += OnOptionChanged;
+            BookTitleMark.Unchecked += OnOptionChanged;
+            PairedTag.Checked += OnOptionChanged;
+            PairedTag.Unchecked += OnOptionChanged;
             Asterisk.Checked += OnOptionChanged;
             Asterisk.Unchecked += OnOptionChanged;
             // TextChanged 用的是 TextChangedEventHandler，签名和 RoutedEventHandler 不通用
             CustomPairs.TextChanged += (s, e) => UpdatePreview();
+            CustomRegex.TextChanged += (s, e) => UpdatePreview();
             PreviewInput.TextChanged += (s, e) => UpdatePreview();
 
             UpdatePreview();
@@ -61,8 +69,11 @@ namespace Vpet.Plugin.CustomTTS
             SquareBracket = SquareBracket.IsChecked == true,
             CurlyBracket = CurlyBracket.IsChecked == true,
             AngleBracket = AngleBracket.IsChecked == true,
+            BookTitleMark = BookTitleMark.IsChecked == true,
+            PairedTag = PairedTag.IsChecked == true,
             Asterisk = Asterisk.IsChecked == true,
-            CustomPairs = CustomPairs.Text ?? ""
+            CustomPairs = CustomPairs.Text ?? "",
+            CustomRegex = CustomRegex.Text ?? ""
         };
 
         private void UpdatePreview()
@@ -72,10 +83,22 @@ namespace Vpet.Plugin.CustomTTS
 
             try
             {
-                var filtered = SpeechTextFilter.Apply(PreviewInput.Text, CollectSetting());
+                var errors = new List<string>();
+                var filtered = SpeechTextFilter.Apply(PreviewInput.Text, CollectSetting(), errors);
                 PreviewOutput.Text = string.IsNullOrWhiteSpace(filtered)
                     ? "（整句都是动作描写，本次不会发声）".Translate()
                     : filtered;
+
+                // 写错的正则在这里当场提示，免得保存完才发现规则没生效
+                if (errors.Count > 0)
+                {
+                    RegexError.Text = string.Join("\n", errors);
+                    RegexError.Visibility = Visibility.Visible;
+                }
+                else
+                {
+                    RegexError.Visibility = Visibility.Collapsed;
+                }
             }
             catch (Exception ex)
             {
@@ -90,8 +113,11 @@ namespace Vpet.Plugin.CustomTTS
             _setting.SquareBracket = collected.SquareBracket;
             _setting.CurlyBracket = collected.CurlyBracket;
             _setting.AngleBracket = collected.AngleBracket;
+            _setting.BookTitleMark = collected.BookTitleMark;
+            _setting.PairedTag = collected.PairedTag;
             _setting.Asterisk = collected.Asterisk;
             _setting.CustomPairs = collected.CustomPairs;
+            _setting.CustomRegex = collected.CustomRegex;
 
             Confirmed = true;
             Close();

@@ -128,6 +128,7 @@ namespace Vpet.Plugin.CustomTTS
 
             TextFilter ??= new TextFilterSetting();
             TextFilter.CustomPairs ??= "";
+            TextFilter.CustomRegex ??= "";
         }
     }
 
@@ -158,11 +159,25 @@ namespace Vpet.Plugin.CustomTTS
         public bool CurlyBracket { get; set; } = false;
 
         /// <summary>
-        /// 尖括号 &lt; &gt; 〈 〉 《 》。
-        /// 默认关闭：书名号和数学比较符号都会被误伤
+        /// 尖括号 &lt; &gt; ＜ ＞。默认关闭：大于小于号会被误伤
         /// </summary>
         [Line]
         public bool AngleBracket { get; set; } = false;
+
+        /// <summary>
+        /// 书名号 《 》 〈 〉。默认关闭：书名不该被吞掉。
+        /// 单独一项而不并进 <see cref="AngleBracket"/>，
+        /// 是因为「念书名」和「念大于小于号」是两回事
+        /// </summary>
+        [Line]
+        public bool BookTitleMark { get; set; } = false;
+
+        /// <summary>
+        /// 成对标签 &lt;动作&gt;轻轻摸了摸主人的头&lt;/动作&gt;，连标签带内容一起跳过。
+        /// 首尾同名才算，所以「5 &lt; x and y &gt; 3」不会被误伤
+        /// </summary>
+        [Line]
+        public bool PairedTag { get; set; } = true;
 
         /// <summary>成对星号包裹的动作描写 *摸摸头* / **摸摸头**</summary>
         [Line]
@@ -174,6 +189,13 @@ namespace Vpet.Plugin.CustomTTS
         /// </summary>
         [Line]
         public string CustomPairs { get; set; } = "";
+
+        /// <summary>
+        /// 自定义正则，每行一条，命中的内容不朗读；以 # 开头的行是注释。
+        /// 写错的那条会被跳过，不影响其他规则
+        /// </summary>
+        [Line]
+        public string CustomRegex { get; set; } = "";
     }
 
     /// <summary>

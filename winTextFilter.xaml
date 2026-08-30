@@ -32,8 +32,14 @@
                 <CheckBox x:Name="CurlyBracket" Margin="0,3"
                           Content="{ll:Str 花括号　｛ ｝　半角同样生效}" />
                 <CheckBox x:Name="AngleBracket" Margin="0,3"
-                          Content="{ll:Str 尖括号　&lt; &gt;　〈 〉　《 》}"
-                          ToolTip="{ll:Str 默认关闭：书名号和大于小于号会被误伤}" />
+                          Content="{ll:Str 尖括号　&lt; &gt;　＜ ＞}"
+                          ToolTip="{ll:Str 默认关闭：大于小于号会被误伤}" />
+                <CheckBox x:Name="BookTitleMark" Margin="0,3"
+                          Content="{ll:Str 书名号　《 》　〈 〉}"
+                          ToolTip="{ll:Str 默认关闭：开了之后《活着》这类书名也会被跳过}" />
+                <CheckBox x:Name="PairedTag" Margin="0,3"
+                          Content="{ll:Str 成对标签　&lt;动作&gt;摸摸头&lt;/动作&gt;}"
+                          ToolTip="{ll:Str 连标签带里面的内容一起跳过；首尾同名才算，所以普通的大于小于号不会被误伤}" />
                 <CheckBox x:Name="Asterisk" Margin="0,3"
                           Content="{ll:Str 成对星号　*动作*　**动作**}" />
             </StackPanel>
@@ -43,6 +49,14 @@
         <TextBox x:Name="CustomPairs" Margin="0,0,0,10" Padding="5,3"
                  VerticalContentAlignment="Center"
                  ToolTip="{ll:Str 例如：「」『』}" />
+
+        <TextBlock Text="{ll:Str 自定义正则（每行一条，命中的内容不朗读）}" Margin="0,0,0,3" />
+        <TextBox x:Name="CustomRegex" Margin="0,0,0,3" Padding="5,3"
+                 TextWrapping="NoWrap" AcceptsReturn="True" FontFamily="Consolas"
+                 Height="60" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Auto"
+                 ToolTip="{ll:Str 每行一条正则；以井号开头的行当注释；写错的那条只会被跳过，不影响其他规则}" />
+        <TextBlock x:Name="RegexError" TextWrapping="Wrap" Margin="0,0,0,10"
+                   Foreground="#FFD44444" FontSize="12" Visibility="Collapsed" />
 
         <TextBlock Text="{ll:Str 效果预览}" Margin="0,0,0,3" />
         <TextBox x:Name="PreviewInput" Margin="0,0,0,5" Padding="5,3"
