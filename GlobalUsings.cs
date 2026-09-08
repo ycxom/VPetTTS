@@ -84,7 +84,7 @@ global using PlayerStatus = Vpet.Plugin.CustomTTS.Utils.PlayerStatus;
 global using PlayerType = Vpet.Plugin.CustomTTS.Utils.PlayerType;
 global using PreloadService = Vpet.Plugin.CustomTTS.Core.Preload.PreloadService;
 global using ProcessStatus = Vpet.Plugin.CustomTTS.Utils.ProcessStatus;
-global using RequestSignatureHelper = Vpet.Plugin.CustomTTS.Utils.RequestSignatureHelper;
+global using AuthenticatedServiceTransport = Vpet.Plugin.CustomTTS.Utils.AuthenticatedServiceTransport;
 // Test results
 global using SystemTestResult = Vpet.Plugin.CustomTTS.Utils.SystemTestResult;
 global using TTSCacheManager = Vpet.Plugin.CustomTTS.Utils.TTSCacheManager;

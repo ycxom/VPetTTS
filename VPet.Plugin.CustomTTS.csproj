@@ -17,6 +17,16 @@
     <Page Remove="1102_VPetTTS\**" />
     <None Include="1102_VPetTTS\**" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <ItemGroup>
+    <!-- 自带的原生鉴权组件按进程架构加载；它的位置也决定请求身份（mod_id）。 -->
+    <None Update="Native\win-x64\VPetLLM.SecureCommunication.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="runtimes\win-x64\native\VPetLLM.SecureCommunication.dll" />
+    <None Update="Native\win-x86\VPetLLM.SecureCommunication.dll"
+          CopyToOutputDirectory="PreserveNewest"
+          TargetPath="runtimes\win-x86\native\VPetLLM.SecureCommunication.dll" />
+  </ItemGroup>
   <ItemGroup>
     <PackageReference Include="Lib.Harmony" Version="2.3.3" />
     <PackageReference Include="LinePutScript" Version="1.11.9" />
@@ -39,5 +49,16 @@
       <PluginFiles Include="$(OutputPath)*.json" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(ProjectDir)1102_VPetTTS\plugin\" SkipUnchangedFiles="true" />
+    <!-- 原生鉴权组件必须留在 runtimes 目录里：mod_id 是按它所在目录往上找 info.lps 得到的。 -->
+    <Copy SourceFiles="$(OutputPath)runtimes\win-x64\native\VPetLLM.SecureCommunication.dll"
+          DestinationFolder="$(ProjectDir)1102_VPetTTS\plugin\runtimes\win-x64\native"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(OutputPath)runtimes\win-x64\native\VPetLLM.SecureCommunication.dll')" />
+    <Copy SourceFiles="$(OutputPath)runtimes\win-x86\native\VPetLLM.SecureCommunication.dll"
+          DestinationFolder="$(ProjectDir)1102_VPetTTS\plugin\runtimes\win-x86\native"
+          SkipUnchangedFiles="true"
+          Condition="Exists('$(OutputPath)runtimes\win-x86\native\VPetLLM.SecureCommunication.dll')" />
+    <Warning Text="警告: 未找到自带的原生鉴权组件 VPetLLM.SecureCommunication.dll，官方服务将不可用"
+             Condition="!Exists('$(ProjectDir)1102_VPetTTS\plugin\runtimes\win-x64\native\VPetLLM.SecureCommunication.dll')" />
   </Target>
 </Project>

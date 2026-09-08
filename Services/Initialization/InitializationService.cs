@@ -50,48 +50,21 @@ public class InitializationService : IInitializationService
     }
 
     /// <summary>
-    /// 初始化认证提供者
+    /// 初始化官方服务鉴权通道。
+    /// 身份、设备信号与加解密都在本 MOD 自带的
+    /// VPetLLM.SecureCommunication.dll 里完成，插件不再自造鉴权头。
     /// </summary>
     public void InitializeAuthProviders()
     {
         try
         {
-            Func<ulong> getSteamId = () =>
-            {
-                try { return _mainWindow?.SteamID ?? 0; } catch { return 0; }
-            };
-
-            Func<Task<int>> getAuthKey = async () =>
-            {
-                try { return _mainWindow is not null ? await _mainWindow.GenerateAuthKey() : 0; } catch { return 0; }
-            };
-
-            Func<string> getModId = () =>
-            {
-                try
-                {
-                    var dllPath = Path.GetDirectoryName(System.Reflection.Assembly.GetExecutingAssembly().Location);
-                    if (string.IsNullOrEmpty(dllPath)) return "";
-
-                    foreach (var mod in _mainWindow.OnModInfo)
-                    {
-                        if (mod.Path is not null && dllPath.StartsWith(mod.Path.FullName, StringComparison.OrdinalIgnoreCase))
-                        {
-                            if (mod.ItemID > 0)
-                                return mod.ItemID.ToString();
-                        }
-                    }
-                    return "";
-                }
-                catch { return ""; }
-            };
-
-            RequestSignatureHelper.Init(getSteamId, getAuthKey, getModId);
-            LogMessage("认证签名助手初始化完成");
+            AuthenticatedServiceTransport.Initialize();
+            // 状态里带原因（缺原生组件 / 架构不匹配），直接记下来省得回头再猜
+            LogMessage($"官方服务鉴权通道: {AuthenticatedServiceTransport.StatusMessage}");
         }
         catch (Exception ex)
         {
-            LogMessage($"初始化认证签名助手失败: {ex.Message}");
+            LogMessage($"初始化官方服务鉴权通道失败: {ex.Message}");
         }
     }
 

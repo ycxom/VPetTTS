@@ -16,12 +16,6 @@ namespace Vpet.Plugin.CustomTTS.Utils
     /// 缓存以**主机（scheme+host+port）为键**：TTS、ASR、Chat 走的是同一个 standalone 网关，
     /// 谁先探到结果谁就把 TTL 刷新，其余服务直接复用；任何一次真实请求的成败也会回填同一条目。
     ///
-    /// 探测优先打**穿透到后端**的路径（如 <c>/tts/health</c> → GPT-SoVITS 的 <c>/health</c>），
-    /// 这样后端挂掉而网关还活着的情况也能被识别；该路径不存在时退回网关自身的 <c>/health</c>。
-    ///
-    /// 安全默认：只有在**明确判定服务不可用**时才拦截请求（连不上、超时、5xx）。
-    /// 探测本身出意外、或两个候选路径都没有 /health 时一律放行，
-    /// 绝不能因为预检机制本身把可用的服务判死。
     /// </summary>
     public static class FreeServiceHealthCheck
     {
@@ -176,15 +170,6 @@ namespace Vpet.Plugin.CustomTTS.Utils
                     log?.Invoke($"{probeUrl} 无健康检查端点 ({status})");
                     return (ProbeVerdict.NoSuchEndpoint, "无健康检查端点");
                 }
-
-                // 5xx 是服务端明确的不可用信号（网关探不到后端时也会走这里）。
-                if (status >= 500)
-                {
-                    log?.Invoke($"健康检查失败：{probeUrl} 返回 {status}");
-                    return (ProbeVerdict.Unhealthy, $"服务暂时不可用 ({status})");
-                }
-
-                // 其余 4xx（鉴权等）说明服务器是活的，业务请求该发还得发。
                 log?.Invoke($"健康检查返回 {status}，视为服务在线");
                 return (ProbeVerdict.Healthy, $"服务在线 ({status})");
             }

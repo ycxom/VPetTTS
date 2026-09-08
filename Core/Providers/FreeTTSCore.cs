@@ -110,19 +110,24 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
                 var startTime = DateTime.Now;
                 using var client = CreateHttpClient();
 
-                // 创建请求并添加签名头
+                // 业务请求原样发出，鉴权头由本 MOD 自带的原生组件补齐
                 using var request = new HttpRequestMessage(HttpMethod.Post, _apiUrl)
                 {
                     Content = content
                 };
 
-                // 添加加密认证头
-                if (RequestSignatureHelper.IsInitialized)
+                // 官方服务请求：Steam 身份、鉴权头、应用层加解密都由
+                // 自带的 VPetLLM.SecureCommunication.dll 处理。
+                if (!AuthenticatedServiceTransport.IsAvailable)
                 {
-                    await RequestSignatureHelper.AddSignatureAsync(request);
+                    var unavailable = AuthenticatedServiceTransport.StatusMessage;
+                    LogMessage($"TTS (Free): 鉴权通道不可用 - {unavailable}");
+                    AuthenticatedServiceTransport.NotifyUnavailableOnce("Free TTS");
+                    OnAudioGenerationError($"Free TTS 不可用：{unavailable}");
+                    return Array.Empty<byte>();
                 }
 
-                var response = await client.SendAsync(request);
+                using var response = await AuthenticatedServiceTransport.SendAsync(client, request);
                 var elapsed = (DateTime.Now - startTime).TotalSeconds;
 
                 LogMessage($"TTS (Free): 响应接收完成，耗时 {elapsed:F2} 秒, 状态: {response.StatusCode}");
