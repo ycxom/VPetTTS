@@ -177,15 +177,121 @@
             LogMessage($"屏蔽插件列表已更新: {(effectiveBlocked.Count > 0 ? string.Join(", ", effectiveBlocked) : "(空)")}");
         }
 
+        /// <summary>
+        /// 设置持久化：JSON 写入 文档\VPetLLM\TTS\settings.json（原子替换）。
+        /// 设置窗口（winSetting/winBlockedPlugins）的保存统一走这里。
+        /// </summary>
+        public void SaveSettings()
+        {
+            if (Set is null) return;
+            try
+            {
+                var file = TTSDataPaths.SettingsFile;
+                var tmp = file + ".tmp";
+                File.WriteAllText(tmp, Newtonsoft.Json.JsonConvert.SerializeObject(Set, Newtonsoft.Json.Formatting.Indented));
+                File.Move(tmp, file, overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"保存设置失败: {ex.Message}");
+            }
+        }
+
+        /// <summary>
+        /// 读文档目录的 settings.json。文件不存在返回 false（走迁移）；
+        /// 空/损坏视为已迁移但读不出，返回 true 交由默认值兜底
+        /// </summary>
+        private bool TryLoadSettingsJson(out Setting settings)
+        {
+            settings = null;
+            if (!File.Exists(TTSDataPaths.SettingsFile))
+                return false;
+
+            try
+            {
+                var json = File.ReadAllText(TTSDataPaths.SettingsFile);
+                if (!string.IsNullOrWhiteSpace(json))
+                    settings = Newtonsoft.Json.JsonConvert.DeserializeObject<Setting>(json);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"读取 settings.json 失败（使用默认设置）: {ex.Message}");
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// 迁移前的设置来源：过渡期 settings.lps 优先（更新），其次宿主 Setting.lps 的旧条目。
+        /// LPS 反序列化有两个坑（见 FindVPetTTSSub 注释），都绕开之后才轮到反序列化本身
+        /// </summary>
+        private Setting LoadLegacySettings()
+        {
+            try
+            {
+                if (File.Exists(TTSDataPaths.LegacySettingsFile))
+                {
+                    var doc = new LpsDocument(File.ReadAllText(TTSDataPaths.LegacySettingsFile));
+                    if (FindVPetTTSSub(doc) is { } fromLps)
+                        return LPSConvert.DeserializeObject<Setting>(fromLps);
+                }
+
+                var hostEntry = MW.Set["VPetTTS"];
+                if (hostEntry is not null)
+                    return LPSConvert.DeserializeObject<Setting>(hostEntry);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"读取旧设置失败（使用默认设置）: {ex.Message}");
+            }
+            return new Setting();
+        }
+
+        /// <summary>
+        /// 在 LPS 文档里按名找 "VPetTTS" 的 Sub。不能用库自带的方法：
+        /// 整个 LpsDocument 喂给 DeserializeObject 枚举不到 Sub 内层（静默全默认值），
+        /// 而 LpsDocument.FindSub 对解析出来的这种 Sub 恒返回 null —— 只能按下标手动找
+        /// </summary>
+        private static Sub FindVPetTTSSub(LpsDocument doc)
+        {
+            for (int i = 0; i < doc.Count; i++)
+            {
+                if (doc[i] is Sub s && s.Name == "VPetTTS")
+                    return s;
+            }
+            return null;
+        }
+
+        /// <summary>迁移完成后把过渡期的 settings.lps 改名归档，避免日后误读</summary>
+        private void RetireLegacyLpsSettings()
+        {
+            try
+            {
+                if (File.Exists(TTSDataPaths.LegacySettingsFile))
+                    File.Move(TTSDataPaths.LegacySettingsFile, TTSDataPaths.LegacySettingsFile + ".migrated", overwrite: true);
+            }
+            catch (Exception ex)
+            {
+                LogMessage($"归档旧 settings.lps 失败（不影响使用）: {ex.Message}");
+            }
+        }
+
         public VPetTTS(IMainWindow mainwin) : base(mainwin)
         {
         }
 
         public override void LoadPlugin()
         {
-            // 加载设置
-            Set = LPSConvert.DeserializeObject<Setting>(MW.Set["VPetTTS"]);
-            Set?.Validate();
+            // 加载设置：文档目录 settings.json（JSON 格式，与 LLMEP 的 settings.json 统一）；
+            // 不存在时从旧来源迁出（过渡期 settings.lps / 宿主 Setting.lps 的旧条目）并立即落盘。
+            // 此后宿主条目不再读写，留在原地的只是迁移前的最后一份快照
+            if (!TryLoadSettingsJson(out Set))
+            {
+                Set = LoadLegacySettings();
+                SaveSettings();
+                RetireLegacyLpsSettings();
+            }
+            Set ??= new Setting();
+            Set.Validate();
 
             // ==================== 尽早挂接说话事件 ====================
             // 关键：在耗时的服务初始化之前就注册 SayProcess 和来源拦截器，

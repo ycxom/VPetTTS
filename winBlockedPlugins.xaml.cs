@@ -191,7 +191,7 @@ namespace Vpet.Plugin.CustomTTS
                 vts.Set.CloudBanAllowedMods = newCloudAllowed;
 
                 // 持久化
-                vts.MW.Set["VPetTTS"] = LPSConvert.SerializeObject(vts.Set, "VPetTTS");
+                vts.SaveSettings();
 
                 // 运行时更新拦截器（内部会合并云端 + 本地）
                 vts.UpdateBlockedPlugins(newLocalBlocked);

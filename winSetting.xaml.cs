@@ -526,7 +526,7 @@ namespace Vpet.Plugin.CustomTTS
                 if (win.Confirmed)
                 {
                     vts.Set.Validate();
-                    vts.MW.Set["VPetTTS"] = LPSConvert.SerializeObject(vts.Set, "VPetTTS");
+                    vts.SaveSettings();
                 }
             }
             catch (Exception ex)
@@ -578,7 +578,7 @@ namespace Vpet.Plugin.CustomTTS
 
                 // 验证并保存设置
                 vts.Set.Validate();
-                vts.MW.Set["VPetTTS"] = LPSConvert.SerializeObject(vts.Set, "VPetTTS");
+                vts.SaveSettings();
 
                 // 刷新 TTS 管理器设置
                 vts.ttsManager?.RefreshSettings();
