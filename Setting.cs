@@ -300,7 +300,9 @@ namespace Vpet.Plugin.CustomTTS
 
     public class OpenAITTSSetting
     {
+        // 密钥：settings.json 里加密落盘（DPAPI），内存中仍是明文
         [Line]
+        [Newtonsoft.Json.JsonConverter(typeof(ProtectedStringConverter))]
         public string ApiKey { get; set; } = "";
         [Line]
         public string BaseUrl { get; set; } = "https://api.openai.com/v1";
@@ -364,7 +366,9 @@ namespace Vpet.Plugin.CustomTTS
     {
         [Line]
         public string Key { get; set; } = "";
+        // 请求头的值常放 Authorization: Bearer xxx，按密钥处理
         [Line]
+        [Newtonsoft.Json.JsonConverter(typeof(ProtectedStringConverter))]
         public string Value { get; set; } = "";
         [Line]
         public bool IsEnabled { get; set; } = true;

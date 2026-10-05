@@ -181,20 +181,49 @@
         /// 设置持久化：JSON 写入 文档\VPetLLM\TTS\settings.json（原子替换）。
         /// 设置窗口（winSetting/winBlockedPlugins）的保存统一走这里。
         /// </summary>
-        public void SaveSettings()
+        public bool SaveSettings()
         {
-            if (Set is null) return;
+            if (Set is null) return false;
             try
             {
+                // 密钥字段由 ProtectedStringConverter 在序列化时加密（DPAPI）：
+                // 落盘的 settings.json 里没有明文 key。加密失败会在这里抛出，
+                // 宁可这次保存失败也不回退成明文落盘。
                 var file = TTSDataPaths.SettingsFile;
                 var tmp = file + ".tmp";
                 File.WriteAllText(tmp, Newtonsoft.Json.JsonConvert.SerializeObject(Set, Newtonsoft.Json.Formatting.Indented));
                 File.Move(tmp, file, overwrite: true);
+                return true;
             }
             catch (Exception ex)
             {
                 LogMessage($"保存设置失败: {ex.Message}");
+                return false;
             }
+        }
+
+        /// <summary>
+        /// 回读 settings.json，确认密钥确实能原样解回来。
+        /// 清掉旧明文来源之前必须先过这一关：写失败或解不开时，旧来源是用户唯一的一份 key
+        /// </summary>
+        private bool SettingsFileRoundTripsSecrets()
+        {
+            if (!TryLoadSettingsJson(out var reread) || reread is null)
+                return false;
+
+            if (reread.OpenAI?.ApiKey != Set.OpenAI?.ApiKey)
+                return false;
+
+            var a = reread.DIY?.CustomHeaders ?? new List<CustomHeader>();
+            var b = Set.DIY?.CustomHeaders ?? new List<CustomHeader>();
+            if (a.Count != b.Count)
+                return false;
+            for (int i = 0; i < a.Count; i++)
+            {
+                if (a[i].Value != b[i].Value)
+                    return false;
+            }
+            return true;
         }
 
         /// <summary>
@@ -221,20 +250,13 @@
         }
 
         /// <summary>
-        /// 迁移前的设置来源：过渡期 settings.lps 优先（更新），其次宿主 Setting.lps 的旧条目。
-        /// LPS 反序列化有两个坑（见 FindVPetTTSSub 注释），都绕开之后才轮到反序列化本身
+        /// 迁移前的设置来源：已发布版本把设置放在宿主 Setting.lps 的 "VPetTTS" 条目里。
+        /// 条目不存在（全新安装）得到默认设置
         /// </summary>
         private Setting LoadLegacySettings()
         {
             try
             {
-                if (File.Exists(TTSDataPaths.LegacySettingsFile))
-                {
-                    var doc = new LpsDocument(File.ReadAllText(TTSDataPaths.LegacySettingsFile));
-                    if (FindVPetTTSSub(doc) is { } fromLps)
-                        return LPSConvert.DeserializeObject<Setting>(fromLps);
-                }
-
                 var hostEntry = MW.Set["VPetTTS"];
                 if (hostEntry is not null)
                     return LPSConvert.DeserializeObject<Setting>(hostEntry);
@@ -247,31 +269,25 @@
         }
 
         /// <summary>
-        /// 在 LPS 文档里按名找 "VPetTTS" 的 Sub。不能用库自带的方法：
-        /// 整个 LpsDocument 喂给 DeserializeObject 枚举不到 Sub 内层（静默全默认值），
-        /// 而 LpsDocument.FindSub 对解析出来的这种 Sub 恒返回 null —— 只能按下标手动找
+        /// 清掉宿主 Setting.lps 里 VPetTTS 条目的明文密钥（调用前必须已通过
+        /// <see cref="SettingsFileRoundTripsSecrets"/>）：换成抹掉密钥的副本，其余设置保留，
+        /// 回滚到旧版插件时只丢 key、不丢别的配置。
+        /// 失败只记日志：此时新文件已经是密文，最坏是旧副本还在，不会丢数据
         /// </summary>
-        private static Sub FindVPetTTSSub(LpsDocument doc)
-        {
-            for (int i = 0; i < doc.Count; i++)
-            {
-                if (doc[i] is Sub s && s.Name == "VPetTTS")
-                    return s;
-            }
-            return null;
-        }
-
-        /// <summary>迁移完成后把过渡期的 settings.lps 改名归档，避免日后误读</summary>
-        private void RetireLegacyLpsSettings()
+        private void ScrubLegacyPlaintextSecrets()
         {
             try
             {
-                if (File.Exists(TTSDataPaths.LegacySettingsFile))
-                    File.Move(TTSDataPaths.LegacySettingsFile, TTSDataPaths.LegacySettingsFile + ".migrated", overwrite: true);
+                // LPS 序列化→反序列化得到深拷贝（Newtonsoft 路径会经过加密转换器，拷出来仍是明文，不能用）
+                var copy = LPSConvert.DeserializeObject<Setting>(LPSConvert.SerializeObject(Set, "VPetTTS"));
+                copy.OpenAI.ApiKey = "";
+                foreach (var header in copy.DIY.CustomHeaders)
+                    header.Value = "";
+                MW.Set["VPetTTS"] = LPSConvert.SerializeObject(copy, "VPetTTS");
             }
             catch (Exception ex)
             {
-                LogMessage($"归档旧 settings.lps 失败（不影响使用）: {ex.Message}");
+                LogMessage($"清理宿主 Setting.lps 中的旧密钥失败（其中含明文，建议手动删除 VPetTTS 条目）: {ex.Message}");
             }
         }
 
@@ -281,17 +297,22 @@
 
         public override void LoadPlugin()
         {
-            // 加载设置：文档目录 settings.json（JSON 格式，与 LLMEP 的 settings.json 统一）；
-            // 不存在时从旧来源迁出（过渡期 settings.lps / 宿主 Setting.lps 的旧条目）并立即落盘。
-            // 此后宿主条目不再读写，留在原地的只是迁移前的最后一份快照
-            if (!TryLoadSettingsJson(out Set))
-            {
+            // 加载设置：文档目录 settings.json（密钥字段 DPAPI 加密落盘）；
+            // 不存在时从已发布版本的位置（宿主 Setting.lps 的 "VPetTTS" 条目）迁出并立即落盘，
+            // 回读确认密钥能解回来之后，才清掉宿主条目里的明文密钥
+            var migrating = !TryLoadSettingsJson(out Set);
+            if (migrating)
                 Set = LoadLegacySettings();
-                SaveSettings();
-                RetireLegacyLpsSettings();
-            }
             Set ??= new Setting();
             Set.Validate();
+
+            if (migrating)
+            {
+                if (SaveSettings() && SettingsFileRoundTripsSecrets())
+                    ScrubLegacyPlaintextSecrets();
+                else
+                    LogMessage("设置迁移后回读校验未通过：宿主 Setting.lps 里的明文密钥未清理，请检查 settings.json 后手动删除 VPetTTS 条目");
+            }
 
             // ==================== 尽早挂接说话事件 ====================
             // 关键：在耗时的服务初始化之前就注册 SayProcess 和来源拦截器，
