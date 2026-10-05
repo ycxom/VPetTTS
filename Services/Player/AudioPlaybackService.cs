@@ -16,6 +16,9 @@ public class AudioPlaybackService : IAudioPlaybackService
     // 中断标记：内置播放器没有"停"的接口，只能靠这个让等待循环立刻退出
     private volatile bool _stopRequested = false;
 
+    // 宿主退回 SoundPlayer 时由本插件在后台线程播放 WAV 用的播放器（见 PlayWithBackgroundSoundPlayerAsync）
+    private volatile System.Media.SoundPlayer? _backgroundSoundPlayer;
+
     public AudioPlaybackService(
         IPlayerManager playerManager,
         TTSStateManager stateManager,
@@ -109,7 +112,7 @@ public class AudioPlaybackService : IAudioPlaybackService
                     if (_playerManager.CurrentPlayerType == PlayerType.MpvPlayer && _playerManager.UseMpvPlayer)
                     {
                         // 使用 mpv 播放器（高码率支持）
-                        await PlayWithMpvAsync(normalizedPath, NotifyPlaybackStarted);
+                        await PlayWithMpvAsync(normalizedPath, NotifyPlaybackStarted, audioDurationMs);
                         return; // 播放成功
                     }
                     else if (_playerManager.CurrentPlayerType == PlayerType.VPetBuiltIn)
@@ -189,6 +192,9 @@ public class AudioPlaybackService : IAudioPlaybackService
             // 停掉宿主侧的播放（内置播放器的真实音频 / mpv 期间的静音占位）
             SilentVoiceAnimationHold.End(_mainWindow);
 
+            // 宿主退回 SoundPlayer 时我们自己在后台放的那一路
+            try { _backgroundSoundPlayer?.Stop(); } catch { }
+
             _isPlaying = false;
             _stateManager?.SetPlayingState(false);
             TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 播放已停止");
@@ -208,7 +214,7 @@ public class AudioPlaybackService : IAudioPlaybackService
     /// <paramref name="onPlaybackStarted"/> 在 mpv 进程拉起来之后触发，
     /// 而不是在方法入口 —— 静音占位的 Dispatcher.Invoke 和进程创建都要算进"出声之前"。
     /// </summary>
-    private async Task PlayWithMpvAsync(string path, Action onPlaybackStarted)
+    private async Task PlayWithMpvAsync(string path, Action onPlaybackStarted, long audioDurationMs)
     {
         var mpvPlayer = (_playerManager as PlayerManager)?.GetMpvPlayer();
         if (mpvPlayer is null)
@@ -240,7 +246,7 @@ public class AudioPlaybackService : IAudioPlaybackService
             {
                 // 启动播放并等待完成。起播回报由 MpvPlayer 在 Process.Start 成功后回调，
                 // 此时静音占位已经就位、进程也已拉起，是"声音即将出来"最准的时刻。
-                await mpvPlayer.PlayAsync(path, onPlaybackStarted);
+                await mpvPlayer.PlayAsync(path, onPlaybackStarted, MpvPlaybackLimit(audioDurationMs));
             }
             finally
             {
@@ -279,6 +285,16 @@ public class AudioPlaybackService : IAudioPlaybackService
             }
         }
     }
+
+    /// <summary>
+    /// mpv 单句播放的时长上限：只用来兜"进程卡住不退出"，宁宽勿紧。
+    /// 时长是按文件头算的，认不出的格式按 128kbps 粗估，低码率格式（如 Opus）实际可能长好几倍，
+    /// 所以放到 4 倍再加 15 秒；完全拿不到时长时给 5 分钟。
+    /// </summary>
+    private static TimeSpan MpvPlaybackLimit(long audioDurationMs) =>
+        audioDurationMs > 0
+            ? TimeSpan.FromMilliseconds(audioDurationMs * 4 + 15000)
+            : TimeSpan.FromMinutes(5);
 
     /// <summary>
     /// 启动心跳更新任务（在播放期间定期更新心跳）
@@ -328,6 +344,15 @@ public class AudioPlaybackService : IAudioPlaybackService
                 throw new ArgumentException($"无法创建有效的 URI: {audioUri}");
             }
 
+            // 宿主的 MediaElement 失败过一次就会永久退回 SoundPlayer，此后由 MessageBar 在 UI 线程上
+            // soundPlayer.PlaySync() 同步播放整段语音 —— 播多久，UI 线程（含宠物动画）就冻多久。
+            // 这种状态下不交给宿主，自己在后台线程播。
+            if (!_mainWindow.Main.windowMediaPlayerAvailable)
+            {
+                await PlayWithBackgroundSoundPlayerAsync(validationResult.NormalizedPath, onPlaybackStarted);
+                return;
+            }
+
             // 确保在主线程上调用
             await Application.Current.Dispatcher.InvokeAsync(() =>
             {
@@ -366,6 +391,43 @@ public class AudioPlaybackService : IAudioPlaybackService
         catch (Exception ex)
         {
             throw new InvalidOperationException($"VPet 内置播放器播放失败: {ex.Message}", ex);
+        }
+    }
+
+    /// <summary>
+    /// 宿主已退回 SoundPlayer 时的播放路径：WAV 在后台线程用 SoundPlayer.PlaySync 播放，
+    /// 不碰宿主的 PlayVoice（那条路会在 UI 线程上同步播放）。代价是说话动画不再跟着语音延长。
+    /// SoundPlayer 只能放 PCM WAV，其他格式宿主那条路一样放不了，直接跳过本句。
+    /// </summary>
+    private async Task PlayWithBackgroundSoundPlayerAsync(string path, Action onPlaybackStarted)
+    {
+        if (TryGetWavDurationMs(path) <= 0)
+        {
+            TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 宿主媒体播放器不可用且音频不是 WAV，SoundPlayer 无法播放，跳过本句");
+            // 不回报的话，等起播信号的 VPetLLM 气泡要等到它自己的超时才显示
+            onPlaybackStarted?.Invoke();
+            return;
+        }
+
+        TTSLogger.Log($"[AudioPlaybackService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 宿主媒体播放器不可用，改为后台线程播放 WAV（避免宿主在 UI 线程上同步播放）");
+
+        using var player = new System.Media.SoundPlayer(path);
+        _backgroundSoundPlayer = player;
+        try
+        {
+            await Task.Run(() =>
+            {
+                player.Load();
+                onPlaybackStarted?.Invoke();
+                if (!_stopRequested)
+                {
+                    player.PlaySync();
+                }
+            });
+        }
+        finally
+        {
+            _backgroundSoundPlayer = null;
         }
     }
 

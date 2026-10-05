@@ -97,8 +97,8 @@ public class InitializationService : IInitializationService
     /// </summary>
     public void InitializeCacheManager()
     {
-        // 创建缓存目录
-        var cachePath = GraphCore.CachePath + @"\tts";
+        // 缓存目录：文档\VPetLLM\TTS\Cache（从宿主缓存区迁移，见 TTSDataPaths）
+        var cachePath = TTSDataPaths.CacheDir;
         if (!Directory.Exists(cachePath))
             Directory.CreateDirectory(cachePath);
 

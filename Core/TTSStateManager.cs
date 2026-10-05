@@ -63,8 +63,8 @@ namespace Vpet.Plugin.CustomTTS.Core
         {
             _settings = settings ?? throw new ArgumentNullException(nameof(settings));
 
-            // 设置持久化文件路径
-            _stateFilePath = Path.Combine(GraphCore.CachePath, "tts_state.lps");
+            // 设置持久化文件路径（文档\VPetLLM\TTS，从宿主缓存区迁移，见 TTSDataPaths）
+            _stateFilePath = TTSDataPaths.StateFile;
 
             // 加载持久化状态
             LoadState();

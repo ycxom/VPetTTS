@@ -30,6 +30,16 @@ namespace Vpet.Plugin.CustomTTS.Utils
             var main = mainWindow?.Main;
             if (main is null) return false;
 
+            // 宿主的 MediaElement 失败过一次（MediaFailed）就会永久退回 SoundPlayer，
+            // 此后由 MessageBar 在 UI 线程上 soundPlayer.PlaySync() 同步播放 —— 交给它一段
+            // 10 分钟的静音，整个 VPet（含宠物动画）就冻结 10 分钟，End() 也要 UI 线程，救不回来。
+            // 这种状态下不占位：只是说话动画不再跟着语音延长，声音照常由 mpv 播放。
+            if (!main.windowMediaPlayerAvailable)
+            {
+                TTSLogger.Log("SilentVoiceAnimationHold: 宿主已退回 SoundPlayer（同步播放会冻结 UI），跳过静音占位");
+                return false;
+            }
+
             try
             {
                 var path = EnsureSilentWav();

@@ -160,7 +160,11 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// <summary>
         /// 播放音频文件
         /// </summary>
-        public async Task PlayAsync(string filePath, Action onPlaybackStarted = null)
+        /// <param name="maxDuration">
+        /// 单句播放时长上限，超过即判定 mpv 卡死并强制结束（按播完处理，不抛异常）。
+        /// null 表示不设上限。
+        /// </param>
+        public async Task PlayAsync(string filePath, Action onPlaybackStarted = null, TimeSpan? maxDuration = null)
         {
             if (_disposed)
             {
@@ -201,7 +205,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 LogMessage($"开始播放: {Path.GetFileName(filePath)}");
 
                 // 启动 mpv 进程
-                await StartMpvProcessAsync(filePath, onPlaybackStarted);
+                await StartMpvProcessAsync(filePath, onPlaybackStarted, maxDuration);
 
                 LogMessage($"播放完成: {Path.GetFileName(filePath)}");
             }
@@ -226,7 +230,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// <summary>
         /// 启动 mpv 进程
         /// </summary>
-        private async Task StartMpvProcessAsync(string filePath, Action onPlaybackStarted = null)
+        private async Task StartMpvProcessAsync(string filePath, Action onPlaybackStarted = null, TimeSpan? maxDuration = null)
         {
             try
             {
@@ -297,8 +301,27 @@ namespace Vpet.Plugin.CustomTTS.Utils
                 // 启动进程监控
                 StartProcessMonitoring();
 
-                // 等待进程结束
-                await process.WaitForExitAsync(_cancellationTokenSource.Token);
+                // 等待进程结束。必须有上限：mpv 卡住不退出时（音频设备被占用、驱动挂起），
+                // 上层的静音占位永远撤不掉，宿主会把说话动画一直循环下去（占位文件长 10 分钟）。
+                // 上面的进程监控靠 Process.Responding 判断，而它对无窗口进程恒为 true，指望不上。
+                var stopToken = _cancellationTokenSource.Token;
+                using (var waitCts = CancellationTokenSource.CreateLinkedTokenSource(stopToken))
+                {
+                    if (maxDuration.HasValue)
+                        waitCts.CancelAfter(maxDuration.Value);
+
+                    try
+                    {
+                        await process.WaitForExitAsync(waitCts.Token);
+                    }
+                    catch (OperationCanceledException) when (!stopToken.IsCancellationRequested)
+                    {
+                        LogMessage($"mpv 播放超过上限 {maxDuration.Value.TotalSeconds:F0}s 仍未结束，判定卡死，强制结束");
+                        await TerminateProcessAsync(process);
+                        // 按播完处理、不抛异常：抛出去会被当成 mpv 故障，切到内置播放器把这句重放一遍
+                        return;
+                    }
+                }
 
                 LogMessage($"mpv 进程已结束 (退出代码: {process.ExitCode})");
 
