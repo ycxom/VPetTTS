@@ -1,6 +1,7 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- 宿主 VPet 已是 .NET 10 自包含。旧宿主加载不了本体，由 RuntimeCheck 弹窗提示更新游戏。 -->
+    <TargetFramework>net10.0-windows</TargetFramework>
     <OutputType>Library</OutputType>
     <GenerateAssemblyInfo>false</GenerateAssemblyInfo>
     <UseWPF>true</UseWPF>
@@ -16,6 +17,15 @@
     <EmbeddedResource Remove="1102_VPetTTS\**" />
     <Page Remove="1102_VPetTTS\**" />
     <None Include="1102_VPetTTS\**" CopyToOutputDirectory="PreserveNewest" />
+    <!-- 旧版游戏本体检测是独立的 net8 程序集，不编进本体 -->
+    <Compile Remove="RuntimeCheck\**" />
+    <None Remove="RuntimeCheck\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- 只为让它随本体一起编译，不引用其输出；产物由 CopyToPlugin 放进 plugin 目录 -->
+    <ProjectReference Include="RuntimeCheck\VPetTTS.RuntimeCheck.csproj"
+                      ReferenceOutputAssembly="false" Private="false" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,15 +38,11 @@
           TargetPath="runtimes\win-x86\native\VPetLLM.SecureCommunication.dll" />
   </ItemGroup>
   <ItemGroup>
-    <PackageReference Include="Lib.Harmony" Version="2.3.3" />
+    <PackageReference Include="Lib.Harmony" Version="2.4.2" />
     <PackageReference Include="LinePutScript" Version="1.11.9" />
     <PackageReference Include="LinePutScript.Localization.WPF" Version="1.0.7" />
-    <PackageReference Include="Microsoft.CSharp" Version="4.7.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Serilog" Version="4.2.0" />
-    <PackageReference Include="System.Data.DataSetExtensions" Version="4.5.0" />
-    <PackageReference Include="System.Diagnostics.DiagnosticSource" Version="9.0.5" />
-    <PackageReference Include="System.Runtime.CompilerServices.Unsafe" Version="6.1.2" />
     <PackageReference Include="VPet-Simulator.Core" Version="1.1.0.58" />
     <PackageReference Include="VPet-Simulator.Windows.Interface" Version="1.1.0.58" />
   </ItemGroup>
@@ -49,6 +55,12 @@
       <PluginFiles Include="$(OutputPath)*.json" />
     </ItemGroup>
     <Copy SourceFiles="@(PluginFiles)" DestinationFolder="$(ProjectDir)1102_VPetTTS\plugin\" SkipUnchangedFiles="true" />
+    <!-- 旧版游戏本体检测（net8），见 RuntimeCheck/RuntimeCheckPlugin.cs。
+         本工程开着 DesignTimeBuild，ProjectReference 只还原不编译，所以这里显式编一次。 -->
+    <MSBuild Projects="$(ProjectDir)RuntimeCheck\VPetTTS.RuntimeCheck.csproj" Targets="Build"
+             Properties="Configuration=$(Configuration)" />
+    <Copy SourceFiles="$(ProjectDir)RuntimeCheck\bin\$(Configuration)\net8.0-windows\VPetTTS.RuntimeCheck.dll"
+          DestinationFolder="$(ProjectDir)1102_VPetTTS\plugin\" SkipUnchangedFiles="true" />
     <!-- 原生鉴权组件必须留在 runtimes 目录里：mod_id 是按它所在目录往上找 info.lps 得到的。 -->
     <Copy SourceFiles="$(OutputPath)runtimes\win-x64\native\VPetLLM.SecureCommunication.dll"
           DestinationFolder="$(ProjectDir)1102_VPetTTS\plugin\runtimes\win-x64\native"
