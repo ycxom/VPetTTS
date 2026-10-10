@@ -41,8 +41,17 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
             LoadConfig();
         }
 
+        private bool HasConfig => !string.IsNullOrEmpty(_apiUrl) && !string.IsNullOrEmpty(_apiKey);
+
+        /// <summary>请求时配置还没下好，最多等这么久。语音要和气泡对齐，不能等太长。</summary>
+        private static readonly TimeSpan ConfigDownloadWait = TimeSpan.FromSeconds(10);
+
         private void LoadConfig()
         {
+            // 每句语音前都会调，只在内容变化时记日志
+            var hadConfig = HasConfig;
+            var oldKey = _apiKey;
+            var oldUrl = _apiUrl;
             try
             {
                 var config = FreeConfigManager.GetTTSConfig();
@@ -51,11 +60,13 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
                     _apiKey = DecodeString(config["API_KEY"]?.ToString() ?? "");
                     _apiUrl = DecodeString(config["API_URL"]?.ToString() ?? "");
                     _model = config["Model"]?.ToString() ?? "";
-                    LogMessage("FreeTTSCore: 配置加载成功");
+                    if (_apiKey != oldKey || _apiUrl != oldUrl)
+                        LogMessage(hadConfig ? "FreeTTSCore: 配置已更新" : "FreeTTSCore: 配置加载成功");
                 }
                 else
                 {
-                    LogMessage("FreeTTSCore: 配置文件不存在，请等待配置下载完成后重启程序");
+                    if (hadConfig || oldKey is null)
+                        LogMessage("FreeTTSCore: 配置文件不存在（可能仍在下载，发请求时会再读一次）");
                     _apiKey = "";
                     _apiUrl = "";
                     _model = "";
@@ -70,14 +81,35 @@ namespace Vpet.Plugin.CustomTTS.Core.Providers
             }
         }
 
+        /// <summary>
+        /// 每句语音前从磁盘重读配置：VPetLLM 每 5 分钟会刷新同一目录下的这份配置（服务端换密钥时），
+        /// 以前这里只在构造和启动下载完成时各读一次，之后的变化都要重启才生效。
+        /// 磁盘上没有就发起（或复用）一次下载，等它结束再读。
+        /// </summary>
+        private async Task<bool> EnsureConfigLoadedAsync()
+        {
+            LoadConfig();
+            if (HasConfig) return true;
+
+            var download = FreeConfigManager.RequestDownload();
+            if (!download.IsCompleted)
+            {
+                LogMessage("TTS (Free): 配置仍在下载，等待完成");
+                await Task.WhenAny(download, Task.Delay(ConfigDownloadWait)).ConfigureAwait(false);
+            }
+
+            LoadConfig();
+            return HasConfig;
+        }
+
         public override async Task<byte[]> GenerateAudioAsync(string text)
         {
             try
             {
-                if (string.IsNullOrEmpty(_apiUrl) || string.IsNullOrEmpty(_apiKey))
+                if (!await EnsureConfigLoadedAsync().ConfigureAwait(false))
                 {
                     LogMessage("TTS (Free): 配置未加载，TTS功能不可用");
-                    OnAudioGenerationError("Free TTS 配置未加载，请等待配置下载完成后重启程序");
+                    OnAudioGenerationError("Free TTS 配置下载失败，请检查网络连接后再试");
                     return Array.Empty<byte>();
                 }
 

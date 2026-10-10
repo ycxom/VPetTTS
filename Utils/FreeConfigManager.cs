@@ -9,7 +9,12 @@ namespace Vpet.Plugin.CustomTTS.Utils
     /// </summary>
     public class FreeConfigManager
     {
-        private const string CONFIG_BASE_URL = "https://vpetllm.ycxom.com/api";
+        // 与 VPetLLM 一致：主地址在前，主地址失败或 CDN 缓存了旧内容（MD5 对不上）时换备用地址
+        private static readonly string[] CONFIG_BASE_URLS =
+        {
+            "https://vpetllm.ycxom.top/api",
+            "https://vpetllm.ycxom.com/api"
+        };
         private const string VERSION_FILE = "vpetllm.json";
         private static readonly string ConfigDirectory;
 
@@ -26,6 +31,37 @@ namespace Vpet.Plugin.CustomTTS.Utils
             if (!Directory.Exists(ConfigDirectory))
             {
                 Directory.CreateDirectory(ConfigDirectory);
+            }
+        }
+
+        private static readonly object _downloadLock = new();
+        private static Task<bool>? _download;
+        private static DateTime _lastAttemptUtc;
+
+        /// <summary>上一次下载结束后，至少隔这么久才允许再连一次服务器（离线时每句话都会来要）。</summary>
+        private static readonly TimeSpan RetryInterval = TimeSpan.FromMinutes(1);
+
+        /// <summary>
+        /// 发起配置下载，或复用正在进行的那次。上一次刚结束不满 <see cref="RetryInterval"/> 时
+        /// 直接返回它的结果，不再连服务器。启动时和"发请求发现没有配置"时都走这里。
+        /// </summary>
+        public static Task<bool> RequestDownload()
+        {
+            lock (_downloadLock)
+            {
+                if (_download is not null
+                    && (!_download.IsCompleted || DateTime.UtcNow - _lastAttemptUtc < RetryInterval))
+                {
+                    return _download;
+                }
+
+                _lastAttemptUtc = DateTime.UtcNow;
+                _download = Task.Run(async () =>
+                {
+                    try { return await InitializeTTSConfigAsync().ConfigureAwait(false); }
+                    finally { lock (_downloadLock) _lastAttemptUtc = DateTime.UtcNow; }
+                });
+                return _download;
             }
         }
 
@@ -64,22 +100,24 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// </summary>
         private static async Task<JObject> DownloadVersionInfoAsync()
         {
-            try
+            foreach (var baseUrl in CONFIG_BASE_URLS)
             {
-                // 优化：显式禁用代理以直连下载公开配置。
-                // handler（连接池）按代理配置共享，这里 Dispose 的只是 HttpClient 壳子。
-                using var client = HttpHandlerPool.CreateClient(
-                    () => new HttpClientHandler { UseProxy = false },
-                    TimeSpan.FromSeconds(10));
-                var url = $"{CONFIG_BASE_URL}/{VERSION_FILE}";
-                var response = await client.GetStringAsync(url);
-                return JObject.Parse(response);
+                try
+                {
+                    // 优化：显式禁用代理以直连下载公开配置。
+                    // handler（连接池）按代理配置共享，这里 Dispose 的只是 HttpClient 壳子。
+                    using var client = HttpHandlerPool.CreateClient(
+                        () => new HttpClientHandler { UseProxy = false },
+                        TimeSpan.FromSeconds(10));
+                    var response = await client.GetStringAsync($"{baseUrl}/{VERSION_FILE}");
+                    return JObject.Parse(response);
+                }
+                catch (Exception ex)
+                {
+                    TTSLogger.Log($"FreeConfigManager: [{baseUrl}] 下载版本信息失败: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                TTSLogger.Log($"FreeConfigManager: 下载版本信息失败: {ex.Message}");
-                return null;
-            }
+            return null;
         }
 
         /// <summary>
@@ -108,17 +146,10 @@ namespace Vpet.Plugin.CustomTTS.Utils
 
                 // 需要下载新配置
                 TTSLogger.Log($"FreeConfigManager: 下载新配置 {configName}...");
-                var configContent = await DownloadConfigAsync(configName);
+                var configContent = await DownloadConfigWithVerificationAsync(configName, expectedMd5);
                 if (string.IsNullOrEmpty(configContent))
                 {
-                    return false;
-                }
-
-                // 计算下载内容的MD5
-                var actualMd5 = CalculateMD5(configContent);
-                if (actualMd5 != expectedMd5)
-                {
-                    TTSLogger.Log($"FreeConfigManager: MD5校验失败 - 期望:{expectedMd5}, 实际:{actualMd5}");
+                    TTSLogger.Log($"FreeConfigManager: {configName} 在所有地址均下载失败或MD5校验未通过");
                     return false;
                 }
 
@@ -141,25 +172,37 @@ namespace Vpet.Plugin.CustomTTS.Utils
         }
 
         /// <summary>
-        /// 下载配置文件
+        /// 下载配置文件并校验 MD5：依次尝试各地址，某个地址内容对不上（CDN 缓存了旧版）就换下一个
         /// </summary>
-        private static async Task<string> DownloadConfigAsync(string configName)
+        private static async Task<string> DownloadConfigWithVerificationAsync(string configName, string expectedMd5)
         {
-            try
+            foreach (var baseUrl in CONFIG_BASE_URLS)
             {
-                // 优化：显式禁用代理以直连下载公开配置。
-                // handler（连接池）按代理配置共享，这里 Dispose 的只是 HttpClient 壳子。
-                using var client = HttpHandlerPool.CreateClient(
-                    () => new HttpClientHandler { UseProxy = false },
-                    TimeSpan.FromSeconds(10));
-                var url = $"{CONFIG_BASE_URL}/{configName}";
-                return await client.GetStringAsync(url);
+                try
+                {
+                    // 优化：显式禁用代理以直连下载公开配置。
+                    // handler（连接池）按代理配置共享，这里 Dispose 的只是 HttpClient 壳子。
+                    using var client = HttpHandlerPool.CreateClient(
+                        () => new HttpClientHandler { UseProxy = false },
+                        TimeSpan.FromSeconds(10));
+                    var content = await client.GetStringAsync($"{baseUrl}/{configName}");
+                    if (string.IsNullOrEmpty(content))
+                        continue;
+
+                    var actualMd5 = CalculateMD5(content);
+                    if (actualMd5 != expectedMd5)
+                    {
+                        TTSLogger.Log($"FreeConfigManager: [{baseUrl}] {configName} MD5校验不一致 (期望:{expectedMd5}, 实际:{actualMd5})，尝试下一个地址");
+                        continue;
+                    }
+                    return content;
+                }
+                catch (Exception ex)
+                {
+                    TTSLogger.Log($"FreeConfigManager: [{baseUrl}] 下载配置 {configName} 失败: {ex.Message}");
+                }
             }
-            catch (Exception ex)
-            {
-                TTSLogger.Log($"FreeConfigManager: 下载配置 {configName} 失败: {ex.Message}");
-                return null;
-            }
+            return null;
         }
 
         /// <summary>

@@ -118,7 +118,8 @@ public class InitializationService : IInitializationService
     {
         try
         {
-            await FreeConfigManager.InitializeTTSConfigAsync();
+            // 走统一入口：语音请求发现没配置时会复用这次下载，而不是再并发拉一份
+            await FreeConfigManager.RequestDownload();
             LogMessage("Free TTS 配置初始化完成");
         }
         catch (Exception ex)
