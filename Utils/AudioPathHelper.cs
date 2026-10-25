@@ -167,7 +167,7 @@ namespace Vpet.Plugin.CustomTTS.Utils
         /// <summary>
         /// 检查是否为支持的音频格式
         /// </summary>
-        private static bool IsSupportedAudioFormat(string extension)
+        public static bool IsSupportedAudioFormat(string extension)
         {
             var supportedFormats = new[]
             {

@@ -32,6 +32,11 @@ namespace Vpet.Plugin.CustomTTS
             PreferBuiltInPlayer.IsChecked = vts.Set.PreferVPetBuiltInPlayer;
             EnableTextFilter.IsChecked = vts.Set.TextFilter.Enable;
 
+            // 本地语音库：目录留空时显示默认目录，保存时再折回空值
+            EnableLocalVoice.IsChecked = vts.Set.LocalVoice.Enable;
+            LocalVoiceMatchPunctuation.IsChecked = vts.Set.LocalVoice.MatchPunctuation;
+            LocalVoiceDirectory.Text = LocalVoiceLibrary.ResolveDirectory(vts.Set.LocalVoice);
+
             // 请求超时
             TimeoutSlider.Value = vts.Set.RequestTimeout;
 
@@ -556,6 +561,7 @@ namespace Vpet.Plugin.CustomTTS
                 vts.Set.RequestTimeout = (int)TimeoutSlider.Value;
                 vts.Set.EnableCache = EnableCache.IsChecked.Value;
                 vts.Set.TextFilter.Enable = EnableTextFilter.IsChecked.Value;
+                SaveLocalVoiceConfig();
 
                 // 播放器偏好变化时刷新播放器选择
                 var preferBuiltIn = PreferBuiltInPlayer.IsChecked.Value;
@@ -580,6 +586,20 @@ namespace Vpet.Plugin.CustomTTS
                 vts.Set.Validate();
                 vts.SaveSettings();
 
+                // 刚打开本地语音时把目录和对照表模板建好，用户直接去填就行
+                if (vts.Set.LocalVoice.Enable)
+                {
+                    try
+                    {
+                        LocalVoiceLibrary.EnsureCreated(vts.Set.LocalVoice);
+                    }
+                    catch (Exception ex)
+                    {
+                        var warning = string.Format("创建语音目录失败: {0}".Translate(), ex.Message);
+                        MessageBoxX.Show(warning, "提示".Translate());
+                    }
+                }
+
                 // 刷新 TTS 管理器设置
                 vts.ttsManager?.RefreshSettings();
 
@@ -589,6 +609,46 @@ namespace Vpet.Plugin.CustomTTS
             catch (Exception ex)
             {
                 var message = string.Format("保存设置失败: {0}".Translate(), ex.Message);
+                MessageBoxX.Show(message, "错误".Translate());
+            }
+        }
+
+        private void SaveLocalVoiceConfig()
+        {
+            vts.Set.LocalVoice.Enable = EnableLocalVoice.IsChecked.Value;
+            vts.Set.LocalVoice.MatchPunctuation = LocalVoiceMatchPunctuation.IsChecked.Value;
+
+            // 填的就是默认目录时存空值：默认目录跟着「文档」位置走，换电脑/改文档位置也不失效
+            var dir = LocalVoiceDirectory.Text.Trim();
+            vts.Set.LocalVoice.Directory = string.Equals(dir, LocalVoiceLibrary.DefaultDirectory, StringComparison.OrdinalIgnoreCase) ? "" : dir;
+        }
+
+        private void LocalVoiceBrowse_Click(object sender, RoutedEventArgs e)
+        {
+            var dialog = new Microsoft.Win32.OpenFolderDialog
+            {
+                Title = "选择本地语音目录".Translate()
+            };
+            if (System.IO.Directory.Exists(LocalVoiceDirectory.Text.Trim()))
+                dialog.InitialDirectory = LocalVoiceDirectory.Text.Trim();
+
+            if (dialog.ShowDialog(this) == true)
+                LocalVoiceDirectory.Text = dialog.FolderName;
+        }
+
+        /// <summary>
+        /// 打开语音目录（按输入框里的路径，不必先保存）。没有对照表时先写一份模板
+        /// </summary>
+        private void LocalVoiceOpen_Click(object sender, RoutedEventArgs e)
+        {
+            try
+            {
+                var dir = LocalVoiceLibrary.EnsureCreated(new LocalVoiceSetting { Directory = LocalVoiceDirectory.Text.Trim() });
+                System.Diagnostics.Process.Start("explorer.exe", $"\"{dir}\"");
+            }
+            catch (Exception ex)
+            {
+                var message = string.Format("打开语音目录失败: {0}".Translate(), ex.Message);
                 MessageBoxX.Show(message, "错误".Translate());
             }
         }

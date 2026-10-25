@@ -172,12 +172,20 @@ public class TTSProcessingService : ITTSProcessingService
     }
 
     /// <summary>
-    /// 检查缓存（预加载 + 常规缓存）
+    /// 检查缓存（本地语音库 + 预加载 + 常规缓存）
     /// </summary>
     public async Task<string> CheckCacheAsync(string text)
     {
         try
         {
+            // 0. 用户维护的本地语音库优先：命中就播放用户的音频文件，不碰网络
+            var localPath = LocalVoiceLibrary.Find(text, _settings.LocalVoice);
+            if (localPath is not null)
+            {
+                TTSLogger.Log($"[TTSProcessingService] {DateTime.Now:yyyy-MM-dd HH:mm:ss} 命中本地语音: {Preview(text)} -> {localPath}");
+                return localPath;
+            }
+
             // 1. 检查预加载缓存
             if (_preloadService is not null && _preloadService.IsPreloaded(text))
             {

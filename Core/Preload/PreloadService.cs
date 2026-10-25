@@ -118,6 +118,19 @@ namespace Vpet.Plugin.CustomTTS.Core.Preload
                     return errorResult;
                 }
 
+                // 本地语音库命中：播放时直接用用户的音频文件，不必预先请求服务
+                var localPath = LocalVoiceLibrary.Find(text, _settings.LocalVoice);
+                if (localPath is not null)
+                {
+                    var localResult = PreloadResult.CreateSuccess(requestId, text, localPath, true);
+                    localResult.StartTime = startTime;
+                    localResult.Complete();
+
+                    LogMessage($"预加载命中本地语音 [{requestId}]: {text} -> {localPath}");
+                    OnPreloadCompleted(PreloadEventArgs.CreateCompleted(requestId, text, localPath, localResult.Duration, true));
+                    return localResult;
+                }
+
                 // 生成缓存键
                 var cacheKey = GenerateCacheKey(text);
 

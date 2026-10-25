@@ -89,6 +89,12 @@ namespace Vpet.Plugin.CustomTTS
         public TextFilterSetting TextFilter { get; set; } = new TextFilterSetting();
 
         /// <summary>
+        /// 本地语音库（对照表命中的文字直接播放本地音频，不请求 TTS 服务）
+        /// </summary>
+        [Line]
+        public LocalVoiceSetting LocalVoice { get; set; } = new LocalVoiceSetting();
+
+        /// <summary>
         /// 屏蔽的插件名称列表（这些插件触发的 Say 不会生成 TTS）
         /// </summary>
         [Line]
@@ -129,7 +135,31 @@ namespace Vpet.Plugin.CustomTTS
             TextFilter ??= new TextFilterSetting();
             TextFilter.CustomPairs ??= "";
             TextFilter.CustomRegex ??= "";
+
+            LocalVoice ??= new LocalVoiceSetting();
+            LocalVoice.Directory = LocalVoice.Directory?.Trim() ?? "";
         }
+    }
+
+    /// <summary>
+    /// 本地语音库设置。对照表格式与查找规则见 <see cref="Utils.LocalVoiceLibrary"/>
+    /// </summary>
+    public class LocalVoiceSetting
+    {
+        /// <summary>总开关。关闭时所有文字都走 TTS 服务（旧行为）</summary>
+        [Line]
+        public bool Enable { get; set; } = false;
+
+        /// <summary>语音目录，为空时用 文档\VPetLLM\TTS\LocalVoice</summary>
+        [Line]
+        public string Directory { get; set; } = "";
+
+        /// <summary>
+        /// 标点匹配：打开后标点也必须与对照表一致；
+        /// 关闭（默认）时比较前去掉标点，「你好，主人！」能命中「你好主人」
+        /// </summary>
+        [Line]
+        public bool MatchPunctuation { get; set; } = false;
     }
 
     /// <summary>
